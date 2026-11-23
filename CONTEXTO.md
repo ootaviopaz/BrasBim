@@ -39,7 +39,11 @@ conta‑gotas, cópia com Ctrl).*
 > lugar de cor/espessura soltas (escolha do revisor; as soltas só ficam para arquivos de
 > antes). Seletor `selection_options.pen_combo` (número, amostra, espessura). **Texto da
 > cota movido:** `text_moves` na cota, alça `dim_text:N`, chamada quando longe. Testes
-> PE01–PE05, TC01–TC02.
+> PE01–PE05, TC01–TC02. Commit 4186954.
+> **4ª rodada, spec/ui 16 §4.4:** ferramenta do Assistente `dimension_walls` (cota
+> automática das paredes retas pelo `auto_dimension_wall`, todas num `combine`; pula
+> curvas e as já cotadas pelas duas pontas). Testes AS13. Falta: cotagem do contorno do
+> edifício, cotas internas dos cômodos e dos eixos dos pilares.
 > **Pendente** (spec 55 §7a, 57 §7): penas por elemento nos cortes e fachadas;
 > conta‑gotas levando o estilo para a ferramenta de anotação; conta‑gotas e Ctrl no 3D;
 > `Pset_*Common` entre classes; cor/fonte no DXF; pontos (a)–(c) da spec 56.

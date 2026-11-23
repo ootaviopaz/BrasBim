@@ -1273,6 +1273,65 @@ def table(ctx: Context, args: dict) -> dict:
             "campos_disponiveis": sorted(fields)}
 
 
+# --- cotas (spec/ui 16 §4.4) ---------------------------------------------------------------
+
+
+def _dimensioned_walls(doc: Document, storey) -> set[str]:
+    """Paredes do pavimento que já têm cota pelas duas pontas."""
+    from brasbim.core.annotations import base, dimensions
+
+    out = set()
+    for e in doc.ifc.by_type("IfcAnnotation"):
+        if base.kind_of(e) is not dimensions.DIMENSION:
+            continue
+        state = base.read_state(e)
+        if state.get("storey") != storey.GlobalId:
+            continue
+        ends = {}
+        for point in state.get("points", []):
+            ref = point.get("ref") or {}
+            if ref.get("kind") == "wall":
+                ends.setdefault(ref.get("gid"), set()).add(ref.get("end"))
+        out |= {gid for gid, e_ in ends.items() if {"start", "end"} <= e_}
+    return out
+
+
+def dimension_walls(ctx: Context, args: dict) -> dict:
+    from brasbim.core.ops.history import combine
+
+    doc = ctx.doc
+    storey = _storey(ctx, args)
+    if args.get("ids"):
+        walls = [doc.get(g) for g in _existing(ctx, args["ids"])]
+        bad = [w.GlobalId for w in walls if not w.is_a("IfcWall")]
+        if bad:
+            raise OpError(f"não são paredes: {', '.join(bad)}")
+    else:
+        walls = [w for w in doc.ifc.by_type("IfcWall")
+                 if read_wall(doc, w)["storey"] == storey.GlobalId]
+    if not walls:
+        raise OpError("não há paredes para cotar neste pavimento")
+    done = set() if args.get("again") else _dimensioned_walls(doc, storey)
+    ok, skipped = [], []
+    for wall in walls:
+        if wall.GlobalId in done:
+            skipped.append({"parede": wall.GlobalId, "motivo": "já tem cota"})
+            continue
+        try:
+            ac.auto_dimension_wall(doc, wall)
+        except OpError as e:
+            skipped.append({"parede": wall.GlobalId, "motivo": str(e)})
+            continue
+        ok.append(wall)
+    if not ok:
+        return {"cotas": [], "puladas": skipped}
+    tx = combine(doc, "Cotar paredes",
+                 [lambda w=w: ac.auto_dimension_wall(doc, w) for w in ok])
+    ctx.commit(tx)
+    created = [op.id for op in tx.ops if op.op == "dimension.create"]
+    return {"cotas": created, "paredes": [w.GlobalId for w in ok], "puladas": skipped}
+
+
 # --- registro -----------------------------------------------------------------------------
 
 _XY = {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2,
@@ -1632,4 +1691,12 @@ def default_registry() -> Registry:
         _obj({"ids": _IDS, "axis_start": _XY, "axis_end": _XY, "copy": {"type": "boolean"}},
              ["ids", "axis_start", "axis_end"]),
         mirror_elements))
+    reg.add(Tool(
+        "dimension_walls", "Cotando paredes",
+        "Cota as paredes retas: uma cota em cadeia na face externa de cada parede, com "
+        "as pontas e as bordas das portas e janelas, que acompanha quando a parede ou o "
+        "vão mudam. Sem ids, todas as paredes do pavimento. Pula as curvas e as que já "
+        "têm cota (again=true cota de novo).",
+        _obj({"ids": _IDS, "storey": _STOREY, "again": {"type": "boolean"}}),
+        dimension_walls))
     return reg

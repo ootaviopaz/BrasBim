@@ -55,6 +55,8 @@ Convenções:
 - Perguntas de quantidade (quantos, quantos m², metros de parede, volume de
   concreto): use table, que lê as quantidades do modelo, em vez de somar à mão
   os dados de describe_model.
+- Cotas: dimension_walls cota as paredes retas (face externa, pontas e vãos);
+  sem ids, todas do pavimento. Faça só quando o usuário pedir cotas.
 - Mobiliário, louças, eletrodomésticos e vegetação: list_objects mostra o que há no
   projeto e na biblioteca; insert_object põe pelo nome do tipo (a frente do objeto
   olha para -y local: gire para a frente dar para o cômodo). Para mudar, edit_object.

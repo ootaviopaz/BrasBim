@@ -5,6 +5,7 @@ import json
 import urllib.error
 import urllib.request
 
+import ifcopenshell.util.element
 import pytest
 from conftest import snapshot
 
@@ -326,3 +327,43 @@ def test_as12_nota_da_selecao(ctx, model):
     assert f"parede {middle}, tipo Alvenaria 14, de [0.0, 4.0] a [5.0, 4.0]" in note
     assert f"ambiente {rooms['Sala']} (Sala)" in note
     assert "Nada selecionado" in selection_note(model.doc, model.terreo, set())
+
+
+# AS13: cotas automáticas pelo assistente (spec/ui 16 §4.4)
+
+
+def test_as13_cotar_paredes(ctx, model):
+    from brasbim.core.annotations import base, dimensions
+
+    _call(ctx, "layout_rooms", rooms=[{"name": "Sala", "x": 0, "y": 0, "width": 4,
+                                       "depth": 3}])
+    _call(ctx, "insert_window", at=[2, 0], type="J1")
+    n = len(model.history.undo_stack)
+    out, error = _call(ctx, "dimension_walls")
+    assert not error and len(out["cotas"]) == 4 and not out["puladas"]
+    assert len(model.history.undo_stack) == n + 1  # um Desfazer
+    dims = [e for e in model.doc.ifc.by_type("IfcAnnotation")
+            if base.kind_of(e) is dimensions.DIMENSION]
+    assert len(dims) == 4
+    # a parede da janela: pontas e bordas do vão (4 pontos), associativa
+    most = max(len(base.read_state(d)["points"]) for d in dims)
+    assert most == 4
+    again, _ = _call(ctx, "dimension_walls")
+    assert again["cotas"] == [] and len(again["puladas"]) == 4
+    assert {p["motivo"] for p in again["puladas"]} == {"já tem cota"}
+    _, error = _call(ctx, "dimension_walls", ids=[dims[0].GlobalId])
+    assert error
+    model.history.undo()
+    assert not [e for e in model.doc.ifc.by_type("IfcAnnotation")
+                if base.kind_of(e) is dimensions.DIMENSION]
+
+
+def test_as13_parede_curva_pulada(ctx, model):
+    _call(ctx, "create_walls", walls=[{"start": [0, 0], "end": [4, 0]}])
+    (wall,) = model.doc.ifc.by_type("IfcWall")
+    wall_type = ifcopenshell.util.element.get_type(wall)
+    model.commit(cmd.create_arc_wall(model.doc, wall_type, model.terreo, (0, 3), (2, 4),
+                                     (4, 3)))
+    out, error = _call(ctx, "dimension_walls")
+    assert not error and len(out["cotas"]) == 1
+    assert out["puladas"][0]["motivo"] == "a cota automática é só para parede reta"

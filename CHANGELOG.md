@@ -89,6 +89,10 @@ Aberta em 2026‑11‑12. Tudo o que for feito a partir desta data entra aqui.
   soltar deixa a cópia e cada clique seguinte faz mais uma, em qualquer direção, até Esc
   (Tab digita distância e ângulo; Cópias faz a série). **Ctrl+D** abre o Copiar sem
   arrastar. (spec/ui 55)
+- **Assistente: cotas.** Peça "cote as paredes" e o Assistente faz a cota automática de
+  cada parede reta do pavimento (ou só das que você indicar): pontas e bordas das portas
+  e janelas, na face externa, acompanhando quando a parede muda. Pula as curvas e as que
+  já têm cota; tudo num Desfazer. (spec/ui 16 §4.4)
 
 ### Melhorias
 - Ao fim de um pedido ao Assistente, os objetos (mobiliário, louças, eletrodomésticos)

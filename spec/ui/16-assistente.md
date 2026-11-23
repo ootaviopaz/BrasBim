@@ -126,6 +126,14 @@ elementos (`GlobalId`) se mantém:
 | `move_elements` | Move ou copia (`copy`) pelo vetor | `transform.move_elements` / `copy_elements` |
 | `rotate_elements` / `mirror_elements` | Gira (graus, anti-horário) ou espelha (com `copy`, mantém o original) | `transform` |
 
+### 4.4 Cotas (2026‑11‑23)
+| Ferramenta | Faz | Usa |
+|---|---|---|
+| `dimension_walls` | Cota em cadeia na face externa de cada parede reta (pontas e bordas dos vãos, afastada 12 mm de papel), associativa. Sem `ids`, todas as paredes do pavimento. Pula as curvas e as que já têm cota pelas duas pontas (`again=true` cota de novo) e devolve as puladas com o motivo. Tudo num Desfazer | `annotations.commands.auto_dimension_wall` (o mesmo do botão Cotar), `combine` |
+
+Fica para depois: cotagem do contorno do edifício (total e trechos), cotas internas dos
+cômodos e dos eixos dos pilares.
+
 ### 4.1 Instruções para a IA
 Unidades, sentido dos eixos, paredes pelo eixo, ordem de trabalho (ler, ambientes,
 portas e janelas, piso só quando o pedido é de uma edificação inteira), esquadrias pelo
