@@ -4,8 +4,15 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑23 (spec/ui 55: estilo das cotas e textos, Localizar e substituir,
-conta‑gotas, cópia com Ctrl).*
+*Atualizado em 2026‑11‑23 (spec/ui 55–57 e 16 §4.4: estilo das cotas e textos, Localizar
+e substituir, conta‑gotas, cópia com Ctrl, barra Opções com a seleção, penas por
+elemento, texto da cota móvel, cotas pelo Assistente).*
+
+> **Onde está o trabalho de 2026‑11‑23:** ramo **`estilo-localizar-contagotas`** no
+> GitHub (feito sobre `assistente-foto-objeto`), commits `561e113`, `4186954`, `8a5c931`
+> e este. **Ainda não juntado ao `main`**: para retomar, `git clone
+> https://github.com/ootaviopaz/BrasBim.git` e `git checkout estilo-localizar-contagotas`,
+> ou abrir o pull request para o `main` depois dos testes do revisor.
 
 > **Spec/ui 55 (2026‑11‑23, clone novo do `main` em `19ce678`):** pedido do revisor em
 > quatro itens, spec `spec/ui/55-estilo-de-anotacao-localizar-ajustes-copia.md` aprovada
