@@ -72,6 +72,9 @@ class _PlanPainter:
     _stroke_paths = PlanView._stroke_paths
     _draw_tags = PlanView._draw_tags
     _font = PlanView._font
+    _text_font = PlanView._text_font
+    _own = PlanView._own
+    show_fixed_marks = False  # o sublinhado do texto de cota fixo é só da tela
     _line_px = PlanView._line_px
     world_transform = PlanView.world_transform
     reading_angle = PlanView.reading_angle

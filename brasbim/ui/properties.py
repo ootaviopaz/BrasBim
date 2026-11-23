@@ -21,10 +21,13 @@ from collections import Counter
 
 import ifcopenshell.util.element
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QColorDialog,
     QComboBox,
+    QFontComboBox,
     QFormLayout,
     QFrame,
     QGridLayout,
@@ -45,6 +48,7 @@ from brasbim.core.annotations import commands as ac
 from brasbim.core.annotations import dimensions as annotation_dims
 from brasbim.core.annotations import drafting, drawing2d
 from brasbim.core.annotations import spaces as space_data
+from brasbim.core.annotations import style as annotation_style
 from brasbim.core.document import OpError
 from brasbim.core.drawings import masters, saved_views, sheets, views
 from brasbim.core.fillings import commands as fc
@@ -335,6 +339,9 @@ class PropertiesPanel(QScrollArea):
                              if not any(e.is_a(c) for c in known) and not objects.is_object(e))
             for cls, n in sorted(others.items()):
                 self._add(cls, QLabel(str(n)))
+            notes = [e for e in selection if annotation_style.styled(e)]
+            if notes:  # várias anotações: o estilo vale para todas (spec/ui 55 §2.3)
+                self._annotation_style(notes)
         else:
             self._tool_options()
         if active is None and selection:
@@ -1358,8 +1365,131 @@ class PropertiesPanel(QScrollArea):
             self._read("Medidas", " · ".join(annotation_dims.fmt(v) for v in values))
             held = sum(1 for p in state["points"] if p.get("ref") and not p.get("lost"))
             self._read("Pontos presos", f"{held} de {len(state['points'])}")
+            self._dimension_text(element, state, values)
+        if annotation_style.styled(element):
+            self._annotation_style([element])
         self._section("Identificação")
         self._read("GlobalId", element.GlobalId)
+
+    def _dimension_text(self, element, state, values) -> None:
+        """Texto de cada trecho, prefixo, sufixo, casas e marcador (spec/ui 55 §2.2)."""
+        doc = self.session.doc
+
+        def edit(**changes):
+            self._run(lambda: ac.edit_element(doc, element, **changes))
+
+        self._section("Texto da cota")
+        self._text("Prefixo", state.get("prefix") or "", lambda v: edit(prefix=v or None))
+        self._text("Sufixo", state.get("suffix") or "", lambda v: edit(suffix=v or None))
+        self._combo("Casas decimais", [("Do projeto", None)] + [(str(n), n) for n in range(5)],
+                    state.get("decimals"), lambda v: edit(decimals=v))
+        texts = dict(state.get("texts") or {})
+        for i, value in enumerate(values):
+            measure = annotation_dims.fmt(value)
+
+            def commit(v, i=i):
+                new = dict(texts)
+                if not v or v == annotation_dims.MEASURE:
+                    new.pop(str(i), None)
+                else:
+                    new[str(i)] = v
+                edit(texts=new or None)
+
+            field = self._text(f"Trecho {i + 1} ({measure})",
+                               texts.get(str(i), annotation_dims.MEASURE), commit)
+            field.setToolTip(f"{annotation_dims.MEASURE} é trocado pela medida, que continua "
+                             "acompanhando o modelo; sem ele o texto fica fixo")
+        if texts:
+            self._buttons(("Voltar à medida", lambda: edit(texts=None)))
+        self._section("Marcador")
+        self._combo("Marcador", [("Traço a 45°", "tick"), ("Seta cheia", "arrow"),
+                                 ("Seta aberta", "open_arrow"), ("Ponto", "dot"),
+                                 ("Nenhum", "none")], state.get("marker") or "tick",
+                    lambda v: edit(marker=None if v == "tick" else v))
+        self._number("Tamanho (mm)", state.get("marker_size") or annotation_dims.TICK,
+                     lambda v: edit(marker_size=None if abs(v - annotation_dims.TICK) < 1e-9
+                                    else v))
+
+    def _annotation_style(self, elements) -> None:
+        """Fonte, altura, cor e linha de uma ou várias anotações (spec/ui 55 §2.3)."""
+        doc = self.session.doc
+        elements = [e for e in elements if annotation_style.styled(e)]
+        if not elements:
+            return
+
+        def set_(**fields):
+            self._run(lambda: annotation_style.edit_style(doc, elements, **fields))
+
+        def common(field):
+            return annotation_style.common(elements, field)
+
+        has_text = any(annotation_base.build(doc, e).texts for e in elements)
+        if has_text:
+            self._section("Texto")
+            fonts = QFontComboBox()
+            fonts.setEditable(False)
+            current = common("font")
+            fonts.insertItem(0, "Padrão (da interface)")
+            fonts.setCurrentIndex(fonts.findText(current) if current else 0)
+            fonts.currentIndexChanged.connect(
+                lambda i: set_(font=None if i == 0 else fonts.itemText(i)))
+            self._add("Fonte", fonts)
+            sizes = [("Do tipo", None)] + [(f"{fmt(v)} mm", v) for v in annotation_style.SIZES]
+            size = common("size")
+            if size is not None and size not in annotation_style.SIZES:
+                sizes.append((f"{fmt(size)} mm", size))
+            combo = self._combo("Altura", sizes, size, lambda v: set_(size=v))
+            combo.setEditable(True)
+            combo.lineEdit().editingFinished.connect(lambda: self._typed_size(combo, set_))
+            self._combo("Negrito", YES_NO, bool(common("bold")),
+                        lambda v: set_(bold=v or None))
+            self._combo("Itálico", YES_NO, bool(common("italic")),
+                        lambda v: set_(italic=v or None))
+            self._color("Cor do texto", common("text_color"),
+                        lambda v: set_(text_color=v))
+        self._section("Linha")
+        self._color("Cor da linha", common("line_color"), lambda v: set_(line_color=v))
+        weight = common("weight")
+        self._combo("Espessura", [("Da pena", None)] +
+                    [(f"{fmt(w)} mm", w) for w in drafting.LINE_WEIGHTS], weight,
+                    lambda v: set_(weight=v))
+        if any((annotation_base.read_state(e).get("style") or {}) for e in elements):
+            self._buttons(("Seguir a pena (tirar o estilo)", lambda: set_(
+                **dict.fromkeys(annotation_style.FIELDS))))
+
+    def _typed_size(self, combo, set_) -> None:
+        text = combo.currentText().replace("mm", "").strip()
+        try:
+            value = parse_number(text)
+        except ValueError:
+            return
+        if combo.currentData() != value:
+            set_(size=value)
+
+    def _color(self, label: str, value, commit) -> None:
+        """Botão com a cor (abre a escolha de cor) e "Da pena" para tirar."""
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        swatch = QPushButton(value or "Da pena")
+        if value:
+            ink = theme.FIELD if QColor(value).lightness() < 128 else theme.INK
+            swatch.setStyleSheet(f"background: {value}; color: {ink}")
+
+        def pick():
+            chosen = QColorDialog.getColor(QColor(value or theme.INK), self, label)
+            if chosen.isValid():
+                commit(chosen.name().upper())
+
+        swatch.clicked.connect(pick)
+        row.addWidget(swatch, 1)
+        if value:
+            back = QPushButton("Da pena")
+            back.setToolTip("Volta à cor da pena da categoria")
+            back.clicked.connect(lambda: commit(None))
+            row.addWidget(back)
+        holder = QWidget()
+        holder.setLayout(row)
+        self._add(label, holder)
 
     def _layer_field(self, selection) -> None:
         """Camada (spec/ui 18 §5) e situação (spec/ui 31 §2) de um ou vários elementos:

@@ -140,6 +140,10 @@ class Resolved:
         """Espessura de uma linha da categoria que seria ``weight`` na tabela padrão."""
         return weight * self.scale(category)
 
+    def own(self, color: str) -> str:
+        """Cor própria de uma anotação (spec/ui 55 §2.1): vale, salvo "Imprimir em preto"."""
+        return INK if self.black else color
+
 
 def resolve(doc: Document, table_id: str | None = None, paper: bool = False) -> Resolved:
     """Penas da tabela ``table_id`` (ou da janela); ``paper``: prancha/PDF, onde "Imprimir

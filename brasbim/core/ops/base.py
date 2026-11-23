@@ -104,6 +104,7 @@ HANDLER_MODULES = (
     "brasbim.core.intervention",
     "brasbim.core.display_layers",
     "brasbim.core.edit_state",
+    "brasbim.core.find",  # criteria.edit, pset.set (spec/ui 55 §3)
 )
 _loaded = False
 

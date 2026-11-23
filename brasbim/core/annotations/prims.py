@@ -30,6 +30,10 @@ class Stroke:
     closed: bool = False
     weight: float = 0.25  # mm de papel
     dash: str = "solid"
+    # Estilo da anotação (spec/ui 55 §2.1): cor própria (passa por cima da pena) e
+    # espessura final (``pen`` False: a pena da categoria não a muda).
+    color: str | None = None
+    pen: bool = True
 
 
 @dataclass(frozen=True)
@@ -41,6 +45,12 @@ class Text:
     halign: str = "center"
     valign: str = "bottom"  # bottom ou middle
     bold: bool = False
+    # Estilo da anotação (spec/ui 55 §2.1); None: a fonte da interface e a cor da pena.
+    font: str | None = None
+    italic: bool = False
+    color: str | None = None
+    # Só na tela: sublinhado do texto de cota trocado que não acompanha a medida (§2.2).
+    fixed: bool = False
 
 
 @dataclass(frozen=True)
@@ -107,7 +117,7 @@ def _colour(ifc, color: str):
     return ifc.createIfcColourRgb(None, r, g, b)
 
 
-def _curve_style(ifc, weight: float, dash: str):
+def _curve_style(ifc, weight: float, dash: str, color: str | None = None):
     font = None
     if dash != "solid":
         pattern = DASH_PATTERNS[dash]
@@ -117,7 +127,7 @@ def _curve_style(ifc, weight: float, dash: str):
             for i in range(0, len(pattern), 2)])
     return ifc.createIfcCurveStyle(None, font,
                                    ifc.createIfcPositiveLengthMeasure(float(weight) / 1000.0),
-                                   _colour(ifc, INK), False)
+                                   _colour(ifc, color or INK), False)
 
 
 def _fill_style(ifc, fill: dict):
@@ -170,18 +180,20 @@ def write(doc: Document, element, prims: Prims, compact: bool = False) -> None:
         else:
             pts = [_point(ifc, p) for p in s.points]
             curve = ifc.createIfcPolyline([*pts, pts[0]] if s.closed else pts)
-        by_style.setdefault((s.weight, s.dash), []).append(curve)
-    for (weight, dash), curves in sorted(by_style.items()):
+        by_style.setdefault((s.weight, s.dash, s.color or ""), []).append(curve)
+    for (weight, dash, color), curves in sorted(by_style.items()):
         item = ifc.createIfcGeometricCurveSet(curves)
-        ifc.createIfcStyledItem(item, [_curve_style(ifc, weight, dash)], None)
+        ifc.createIfcStyledItem(item, [_curve_style(ifc, weight, dash, color or None)], None)
         items.append(item)
     for t in prims.texts:
         item = _text_item(ifc, t)
+        # Fonte e cor do estilo (spec/ui 55 §2.4); sem estilo, como antes.
         font = ifc.createIfcTextStyleFontModel(
-            "BrasBim", ["sans-serif"], None, None, None,
+            t.font or "BrasBim", [t.font, "sans-serif"] if t.font else ["sans-serif"],
+            "italic" if t.italic else None, None, "bold" if t.bold else None,
             ifc.createIfcLengthMeasure(float(t.height)))
         style = ifc.createIfcTextStyle(None, ifc.createIfcTextStyleForDefinedFont(
-            _colour(ifc, INK), None), None, font, False)
+            _colour(ifc, t.color or INK), None), None, font, False)
         ifc.createIfcStyledItem(item, [style], None)
         items.append(item)
     for f in prims.fills:

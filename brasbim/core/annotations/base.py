@@ -46,9 +46,13 @@ class Kind:
     compact: bool = False
     # False: só os parâmetros, sem geometria IFC (desenho importado, spec/ui 22 §7).
     geometry: bool = True
+    # Campos opcionais do tipo, sem padrão no estado (ex.: texto trocado da cota).
+    optional: tuple = ()
 
 
 KINDS: dict[str, Kind] = {}
+# Campos opcionais de todas as anotações: o estilo (spec/ui 55 §2.1).
+OPTIONAL = ("style",)
 
 
 def register_kind(kind: Kind) -> None:
@@ -109,6 +113,9 @@ def _dump(state: dict) -> str:
 
 def write(doc: Document, element, kind: Kind, state: dict) -> None:
     kind.validate(state)
+    from brasbim.core.annotations import style
+
+    style.validate(state.get(style.KEY))  # spec/ui 55 §2.1
     storey = doc.get(state["storey"], "IfcBuildingStorey")
     if ifcopenshell.util.element.get_container(element) != storey:
         rel = ifcopenshell.api.spatial.assign_container(doc.ifc, products=[element],
@@ -137,7 +144,7 @@ def rebuild(doc: Document, element) -> None:
         return
     state = read_state(element)
     storey = doc.get(state["storey"], "IfcBuildingStorey")
-    prims.write(doc, element, kind.build(doc, storey, state), compact=kind.compact)
+    prims.write(doc, element, build_state(doc, kind, storey, state), compact=kind.compact)
     doc.changed.add(element.GlobalId)
 
 
@@ -154,7 +161,7 @@ def build(doc: Document, element) -> prims.Prims:
         return prims.Prims()
     if kind.prefix not in CACHED:
         state = read_state(element)
-        return kind.build(doc, doc.get(state["storey"], "IfcBuildingStorey"), state)
+        return build_state(doc, kind, doc.get(state["storey"], "IfcBuildingStorey"), state)
     from brasbim.core import storeys
 
     values = ifcopenshell.util.element.get_pset(element, PSET, should_inherit=False) or {}
@@ -165,9 +172,20 @@ def build(doc: Document, element) -> prims.Prims:
     found = cache.get(element.GlobalId)
     if found is None or found[0] != key:
         state = read_state(element)
-        found = cache[element.GlobalId] = (key, kind.build(
-            doc, doc.get(state["storey"], "IfcBuildingStorey"), state))
+        found = cache[element.GlobalId] = (key, build_state(
+            doc, kind, doc.get(state["storey"], "IfcBuildingStorey"), state))
     return found[1]
+
+
+def build_state(doc: Document, kind: Kind, storey, state: dict) -> prims.Prims:
+    """Primitivas do estado com o estilo da anotação (spec/ui 55 §2.1)."""
+    from brasbim.core import storeys
+    from brasbim.core.annotations import style
+
+    built = kind.build(doc, storey, state)
+    if not state.get(style.KEY):
+        return built
+    return style.apply(built, state[style.KEY], storeys.paper(storey, 1.0))
 
 
 def remove(doc: Document, element) -> None:

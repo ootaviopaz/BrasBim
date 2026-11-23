@@ -9,6 +9,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 from PySide6.QtCore import QPointF, QSettings, Qt, QTimer
@@ -274,6 +275,10 @@ class MainWindow(QMainWindow):
         view.tool_requested.connect(self.activate_tool)
         view.context_requested.connect(
             lambda gid, pos, v=view: self.show_context_menu(v, gid, pos))
+        if hasattr(view, "settings_clicked"):  # conta-gotas (spec/ui 55 §4.1)
+            view.settings_clicked.connect(
+                lambda gid, apply: self.apply_settings([gid]) if apply
+                else self.pick_settings(gid))
         view.selection_bar = SelectionBar(view, self.run_selection_action)
         view.solid_badge = SolidBadge(view, lambda gid: self.session.select([gid]))
 
@@ -454,7 +459,9 @@ class MainWindow(QMainWindow):
         edit_menu.addSeparator()
         for key, text in (("move", "Mover"), ("copy", "Copiar"), ("rotate", "Girar"),
                           ("mirror", "Espelhar"), ("split", "Dividir")):
-            self._action(edit_menu, text, lambda _=False, k=key: self.run_selection_action(k))
+            # Ctrl+D: cópias até Esc, sem arrastar (spec/ui 55 §5)
+            self._action(edit_menu, text, lambda _=False, k=key: self.run_selection_action(k),
+                         "Ctrl+D" if key == "copy" else None)
         self.delete_action = self._action(edit_menu, "Excluir", self.delete_selection, "Del")
         self._action(edit_menu, "Converter em forma livre",  # forma-livre.md §4.3
                      lambda: self.convert_to_freeform())
@@ -462,6 +469,10 @@ class MainWindow(QMainWindow):
         self._action(edit_menu, "Girar 90° à esquerda", lambda: self.rotate_quarter(1), "Ctrl+R")
         self._action(edit_menu, "Girar 90° à direita", lambda: self.rotate_quarter(-1),
                      "Ctrl+Shift+R")
+        self._action(edit_menu, "Localizar e substituir", self.open_find, "Ctrl+Shift+F")
+        # conta-gotas (spec/ui 55 §4): também Alt+clique e Ctrl+Alt+clique na planta
+        self._action(edit_menu, "Pegar ajustes", lambda: self.pick_settings())
+        self._action(edit_menu, "Aplicar ajustes", lambda: self.apply_settings())
         similar_menu = edit_menu.addMenu("Selecionar semelhantes")
         for key, text in select_similar.CRITERIA:
             self._action(similar_menu, text, lambda _=False, k=key: self.select_similar(k))
@@ -2260,6 +2271,80 @@ class MainWindow(QMainWindow):
         self.view3d.update()
         (self.ctx.input_view or self.plan).setFocus()
 
+    def open_find(self) -> None:
+        """Editar > Localizar e substituir (Ctrl+Shift+F), janela não modal (spec/ui 55 §3)."""
+        from brasbim.ui.find_dialog import FindDialog
+
+        dialog = getattr(self, "find_dialog", None)
+        if dialog is None or dialog.session is not self.session:
+            dialog = self.find_dialog = FindDialog(self.session, self)
+        else:
+            dialog.refresh_saved()
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+    # --- conta-gotas (spec/ui 55 §4) ---------------------------------------------------
+
+    TOOL_GROUPS: ClassVar[dict[str, str]] = {"wall": "wall", "rectangle": "wall", "column": "column", "beam": "beam",
+                   "slab": "slab", "roof": "roof", "space": "space", "door": "door",
+                   "window": "window", "text": "annotation:text",
+                   "line2d": "annotation:line2d", "spline2d": "annotation:spline2d",
+                   "hatch": "annotation:hatch"}
+
+    def pick_settings(self, gid: str | None = None) -> None:
+        """Pega os ajustes do elemento (Alt+clique ou Editar > Pegar ajustes). Com uma
+        ferramenta de criação da mesma classe ativa, os ajustes vão para ela."""
+        from brasbim.core import pick_settings as settings_core
+
+        session = self.session
+        if gid is None:
+            if len(session.selection) != 1:
+                session.message("selecione um elemento para pegar os ajustes dele", "recusa")
+                return
+            gid = next(iter(session.selection))
+        element = session.doc.find(gid)
+        try:
+            picked = settings_core.pick(session.doc, element)
+        except OpError as e:
+            session.message(str(e), "recusa")
+            return
+        self.ctx.picked = picked
+        tool = self.toolbox.active
+        text = f"Ajustes pegos: {picked.label}"
+        if self.TOOL_GROUPS.get(tool.name) == picked.group and hasattr(tool, "options"):
+            for attr, value in settings_core.tool_changes(picked).items():
+                if hasattr(tool.options, attr):
+                    setattr(tool.options, attr, value)
+            self.options_bar.show_for(tool)
+            text += f" (valem para a ferramenta {tool.label})"
+        else:
+            text += "; Ctrl+Alt+clique ou Aplicar ajustes leva a outros elementos"
+        session.message(text)
+        self._set_hint(text)
+
+    def apply_settings(self, gids=None) -> None:
+        """Aplica os ajustes pegos (Ctrl+Alt+clique ou Aplicar ajustes na seleção)."""
+        from brasbim.core import pick_settings as settings_core
+
+        session = self.session
+        picked = getattr(self.ctx, "picked", None)
+        if picked is None:
+            session.message("pegue os ajustes antes: Alt+clique num elemento", "recusa")
+            return
+        gids = sorted(session.selection) if gids is None else list(gids)
+        targets = [e for e in (session.doc.find(g) for g in gids) if e is not None]
+        if not targets:
+            session.message("selecione os elementos que recebem os ajustes", "recusa")
+            return
+        try:
+            edit_state.ensure_unlocked(session.doc, [t.GlobalId for t in targets])
+        except OpError as e:
+            session.message(str(e), "recusa")
+            return
+        session.run(lambda: settings_core.apply(session.doc, picked, targets))
+        self.properties.refresh()
+
     def remove_selection_area(self) -> None:
         """Editar > Remover área de seleção (spec/ui 38 §2)."""
         if self.ctx.area is not None:
@@ -2410,6 +2495,12 @@ class MainWindow(QMainWindow):
             return
         if key == "hide":
             self.hide_selection()
+            return
+        if key == "pick_settings":  # conta-gotas (spec/ui 55 §4.1)
+            self.pick_settings()
+            return
+        if key == "apply_settings":
+            self.apply_settings()
             return
         if key in ("swap_type", "edit_object_type", "detach"):
             self._object_action(key)

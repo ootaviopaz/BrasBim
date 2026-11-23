@@ -4,8 +4,30 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑12 (versão 0.0.2 aberta com `CHANGELOG.md`; busca no Navegador).*
+*Atualizado em 2026‑11‑23 (spec/ui 55: estilo das cotas e textos, Localizar e substituir,
+conta‑gotas, cópia com Ctrl).*
 
+> **Spec/ui 55 (2026‑11‑23, clone novo do `main` em `19ce678`):** pedido do revisor em
+> quatro itens, spec `spec/ui/55-estilo-de-anotacao-localizar-ajustes-copia.md` aprovada
+> com as propostas (cor/espessura livres por cima da pena, qualquer fonte instalada,
+> Alt+clique pega e Ctrl+Alt+clique aplica, cada clique uma cópia até Esc).
+> (1) **Estilo das anotações**: fonte, altura, negrito, itálico, cor do texto, cor e
+> espessura da linha em toda anotação (chave `style` no Pset `BrasBim_Anotacao`,
+> `core/annotations/style.py`); cota com marcador (traço, seta cheia/aberta, ponto,
+> nenhum), texto de cada trecho com `<medida>` (associativo; sem ele fica fixo e
+> sublinhado só na tela), prefixo, sufixo e casas. (2) **Localizar e substituir**
+> (`core/find.py`, `ui/find_dialog.py`, Ctrl+Shift+F): classes OU, critérios E (tipo, nome,
+> código, camada, situação, material, pavimento, texto, propriedade, quantidade),
+> critérios salvos no projeto (`criteria.edit`), substituir texto/nome/código,
+> propriedade (op nova `pset.set`), tipo, camada, situação e estilo. (3) **Conta‑gotas**
+> (`core/pick_settings.py`): Alt+clique pega, Ctrl+Alt+clique aplica, mini‑barra e menu
+> Editar; com ferramenta de criação ativa, os ajustes vão para ela. (4) **Cópia ao
+> arrastar**: Ctrl no arrasto da seleção mostra o +; ao soltar sai a cópia e o Copiar
+> segue do mesmo ponto de base (Tab, Cópias), Esc termina; Ctrl+D abre o Copiar. Ícones
+> novos `pick_settings`, `apply_settings`, `find`. Testes EA, LS, AJ, CA (spec §6).
+> **Pendente** (spec §7a): estilo na barra Opções das ferramentas de anotação, conta‑gotas
+> e Ctrl no 3D, `Pset_*Common` entre classes, cor/fonte no DXF.
+>
 > **Versão 0.0.2 em desenvolvimento (2026‑11‑12, pedido do revisor):** a partir desta
 > data toda mudança entra na 0.0.2 (`pyproject.toml` e `brasbim/__init__.py` já dizem
 > 0.0.2) e ganha uma linha em **`CHANGELOG.md`** no mesmo commit; o texto da versão vira a
@@ -1104,6 +1126,7 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 | `spec/ui/38-area-de-selecao` | **em revisão**; núcleo do Esticar feito (AS01–AS04 em `tests/test_area_selecao.py`); §2, §4, §5 a fazer |
 | `spec/ui/42-limpeza-da-janela` | **em revisão**, implementada (LJ01–LJ07 em `tests/test_interface_limpeza.py`) |
 | `spec/ui/41-dwg-solidos-perfil-complexo` | §2 DWG/DXF **implementado** e validado num CAD; (a)–(n) respondidos; §4 perfil: **etapa 1 feita** (editor + viga + pilar; PC01, PC02, PC04, PC06, PC07, PC10), etapas 2–4 a fazer; §3 sólidos a fazer |
+| `spec/ui/55-estilo-de-anotacao-localizar-ajustes-copia` | aprovada (2026‑11‑23), implementada (EA01–EA05, LS01–LS07, AJ01–AJ06, CA01–CA04); o que fica no §7a |
 | `spec/ui/40-reticencias-paineis-e-orientacao-3d` | **em revisão**, implementada (RT01, PN01–PN02, OR01–OR03) |
 | `spec/ui/37-linhas-guia` | **em revisão**, implementada (LG01–LG06 em `tests/test_linhas_guia.py`); pontos §9 |
 | `spec/ui/34-barra-de-ferramentas` | **em revisão**: §2 ícones isométricos e §3 barra dimensionável com grupos feitos (UI34 em `tests/test_interface_barras.py`); §4 ferramentas de vista/documentação a fazer (depois da pesquisa complementar) |

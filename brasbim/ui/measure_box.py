@@ -28,6 +28,21 @@ def _first_is_length(tool) -> bool:
     fields = tool.fields()
     return not fields or fields[0].unit == "m"
 
+def tool_busy(tool) -> bool:
+    """A ferramenta está no meio de algo (pontos clicados ou arrasto)."""
+    return bool(getattr(tool, "points", None)) or getattr(tool, "drag", None) is not None \
+        or getattr(tool, "drag3d", None) is not None
+
+
+def settings_cursor(apply: bool) -> QCursor:
+    """Conta-gotas (pegar) ou gota (aplicar), dos ícones próprios (spec/ui 55 §4.1)."""
+    from brasbim.ui import icons
+
+    name = "apply_settings" if apply else "pick_settings"
+    pixmap = icons.icon(name).pixmap(24, 24)
+    return QCursor(pixmap, 12 if apply else 4, 20)
+
+
 ROWS = 3
 _CURSOR_GAP = 16  # distância do quadro ao cursor, em pixels
 _ARROWS = {Qt.Key_Left: "x", Qt.Key_Right: "x", Qt.Key_Up: "y", Qt.Key_Down: "y"}
@@ -409,6 +424,13 @@ class ToolInput:
 
     def after_tool_input(self) -> None:
         tool = self.toolbox.active
+        if tool.handoff is not None:  # outra ferramenta continua (spec/ui 55 §5)
+            name, setup = tool.handoff
+            tool.handoff = None
+            self.tool_requested.emit(name)
+            if self.toolbox.active.name == name:
+                self.toolbox.active.take(setup)
+            tool = self.toolbox.active
         if tool.finished:
             tool.finished = False
             self.tool_finished.emit()
@@ -421,10 +443,32 @@ class ToolInput:
         """Cruz com o quadradinho de captura na ferramenta Selecionar (spec/ui 28 §2)."""
         if getattr(self, "_space", False):
             return
-        if self.toolbox.active.name == "select":
+        if self.toolbox.active.copying():  # cópia ao arrastar: + junto ao cursor
+            self.setCursor(Qt.DragCopyCursor)
+        elif self.toolbox.active.name == "select":
             self.setCursor(pick_cursor())
         else:
             self.unsetCursor()
+
+    def settings_click(self, p, mods) -> bool:
+        """Alt+clique num elemento pega os ajustes dele; Ctrl+Alt+clique aplica os pegos
+        (spec/ui 55 §4.1). Só com a ferramenta parada: no meio de um desenho, Alt continua
+        sendo o clique sem atração."""
+        if not mods.alt or tool_busy(self.toolbox.active):
+            return False
+        gid = self.ctx.plan.pick(p, self.ctx.tol)
+        if not gid:
+            return False
+        self.settings_clicked.emit(gid, bool(mods.ctrl))
+        self.after_tool_input()
+        return True
+
+    def settings_cursor(self, mods) -> None:
+        """Cursor do conta-gotas (Alt) ou da gota (Ctrl+Alt) com a ferramenta parada."""
+        if mods & Qt.AltModifier and not tool_busy(self.toolbox.active):
+            self.setCursor(settings_cursor(bool(mods & Qt.ControlModifier)))
+        else:
+            self.apply_cursor()
 
     def tool_event(self, event) -> bool:
         """Tab é da ferramenta (spec/ui 01 §5.5, 07 §2.2), não troca o foco."""
@@ -457,6 +501,8 @@ class ToolInput:
                 tool.move(tool.cursor, tool.mods)
         elif key == Qt.Key_Space and not event.isAutoRepeat() and tool.key("space"):
             self.tool_options_changed.emit()  # o pilar girou: a barra Opções mostra o ângulo
+        elif key == Qt.Key_Control and not event.isAutoRepeat() and tool.key("ctrl"):
+            pass  # cópia ao arrastar (spec/ui 55 §5)
         elif text and (text.isdigit() or text in ",.-") and tool.wants_number():
             if tool.fields():
                 self.measure.start(0, text)

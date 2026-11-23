@@ -258,6 +258,7 @@ class PlanContext:
         # Seleção (spec/ui 28): somar cliques (como no CAD) ou trocar a cada clique.
         self.accumulate = True
         self.hover: str | None = None  # elemento realçado sob o cursor
+        self.picked = None  # ajustes pegos com o conta-gotas (spec/ui 55 §4)
         self.area: selection_area.Area | None = None  # área de seleção (spec/ui 38 §2)
         # Chave Escolher travados (spec/ui 39 §5): desligada, o clique e a janela não pegam
         # os travados; a atração continua.
@@ -617,7 +618,18 @@ class Tool:
         pass
 
     def key(self, key: str) -> bool:
-        """Tecla da ferramenta (``enter``, ``tab``); devolve se foi usada."""
+        """Tecla da ferramenta (``enter``, ``tab``, ``ctrl``); devolve se foi usada."""
+        return False
+
+    # Passar a vez para outra ferramenta já preparada: ``(nome, ajustes)``; a vista ativa
+    # a ferramenta e chama ``take(ajustes)`` (cópia ao arrastar, spec/ui 55 §5).
+    handoff: tuple[str, dict] | None = None
+
+    def take(self, setup: dict) -> None:
+        pass
+
+    def copying(self) -> bool:
+        """Cursor com o + da cópia (spec/ui 55 §5)."""
         return False
 
     def transform_fn(self):
@@ -834,6 +846,9 @@ class SelectTool(Tool):
         gid = self.ctx.plan.pick(p, self.ctx.tol)
         element = doc.find(gid) if gid else None
         kind = annotation_base.kind_of(element) if element is not None else None
+        if self.ask_text is not None and kind is annotation_dims.DIMENSION:
+            self._edit_dimension_text(element, p)
+            return
         if self.ask_text is None or kind not in (drafting.TEXT, drawing2d.LABEL):
             return
         if kind is drawing2d.LABEL and annotation_base.read_state(element)["field"] != "free":
@@ -843,6 +858,28 @@ class SelectTool(Tool):
         text = self.ask_text(current)
         if text is not None and text.strip() and text != current:
             self.session.run(lambda: ac.edit_element(doc, gid, text=text.strip("\n")))
+
+    def _edit_dimension_text(self, element, p) -> None:
+        """Clique duplo no número da cota: texto daquele trecho (spec/ui 55 §2.3);
+        ``<medida>`` continua acompanhando; vazio volta à medida."""
+        doc = self.session.doc
+        texts = annotation_base.build(doc, element).texts
+        if not texts:
+            return
+        index = min(range(len(texts)), key=lambda i: math.dist(texts[i].at, p))
+        state = annotation_base.read_state(element)
+        current = (state.get("texts") or {}).get(str(index), annotation_dims.MEASURE)
+        self.drag = None
+        text = self.ask_text(current)
+        if text is None or text == current:
+            return
+        new = dict(state.get("texts") or {})
+        text = text.strip("\n")
+        if not text.strip() or text == annotation_dims.MEASURE:
+            new.pop(str(index), None)
+        else:
+            new[str(index)] = text
+        self.session.run(lambda: ac.edit_element(doc, element.GlobalId, texts=new or None))
 
     def hint(self) -> str:
         if self.drag3d is not None:
@@ -861,7 +898,10 @@ class SelectTool(Tool):
                     f"também os que tocam; {close} para fechar; Shift tira da seleção; "
                     "Esc cancela")
         if d and d["kind"] == "move" and d["active"]:
-            return "Solte para mover a seleção (Esc cancela)"
+            if d.get("copy"):
+                return ("Cópia (+): solte para deixar a cópia e siga clicando para mais "
+                        "cópias; Ctrl volta a mover; Esc cancela")
+            return "Solte para mover a seleção; Ctrl faz cópias (+); Esc cancela"
         if self.ctx.accumulate:
             text = ("Clique soma à seleção; Shift+clique tira; clique no vazio abre a "
                     "janela, arrastar no vazio faz o laço; Esc limpa")
@@ -879,9 +919,18 @@ class SelectTool(Tool):
                 and self.drag3d is None and not self.session.selection):
             self.repeat = self.ctx.last_tool[0]
             return True
+        d = self.drag
+        if key == "ctrl" and d and d["kind"] == "move" and d["active"]:
+            d["copy"] = not d.get("copy")  # cópia ao arrastar (spec/ui 55 §5)
+            return True
         return False
 
     repeat: str | None = None
+
+    def copying(self) -> bool:
+        """Arrasto em modo cópia: o cursor mostra o + (spec/ui 55 §5)."""
+        d = self.drag
+        return bool(d and d["kind"] == "move" and d["active"] and d.get("copy"))
 
     def wants_number(self) -> bool:
         return self.drag3d is not None or bool(
@@ -1358,6 +1407,13 @@ class SelectTool(Tool):
             self.session.run(lambda: fc.edit_door(self.session.doc, door,
                                                   wall=target["wall"],
                                                   distance=target["distance"]))
+        elif kind == "move" and d.get("copy"):
+            # Cópia ao arrastar (spec/ui 55 §5): a primeira cópia sai ao soltar e o Copiar
+            # segue com o mesmo ponto de base: cada clique, mais uma cópia, até Esc.
+            doc, gids, vector = self.session.doc, sorted(selection), d["vector"]
+            if vector and math.hypot(*vector) > 1e-9:
+                self.session.run(lambda: transform.copy_elements(doc, gids, vector))
+            self.handoff = ("copy", {"base": d["base"]})
         elif kind == "move" and d["vector"] and math.hypot(*d["vector"]) > 1e-9:
             doc, gids, vector = self.session.doc, sorted(selection), d["vector"]
             self.session.run(lambda: transform.move_elements(doc, gids, vector))
@@ -4583,7 +4639,18 @@ class CopyTool(MoveTool):
     def cancel(self):
         busy = super().cancel()
         self.count = 1
+        self.dragged = False
         return busy
+
+    dragged = False  # veio da cópia ao arrastar: cursor com + (spec/ui 55 §5)
+
+    def take(self, setup: dict) -> None:
+        """Começa já com o ponto de base (cópia ao arrastar com Ctrl, spec/ui 55 §5)."""
+        self.points = [tuple(setup["base"])]
+        self.dragged = True
+
+    def copying(self) -> bool:
+        return self.dragged and bool(self.points)
 
     def _apply(self, vector):
         if self.count == 1:
@@ -5850,6 +5917,9 @@ def selection_actions(doc, gids) -> list[str]:
         if len(found_objects) == 1 and not free:
             out.append("detach")
     out += ["select_similar", "situation"]  # spec/ui 23 §7, spec/ui 31 §2
+    if len(elements) == 1:  # conta-gotas (spec/ui 55 §4.1)
+        out.append("pick_settings")
+    out.append("apply_settings")
     locked = [e for e in elements if edit_state.is_locked(doc, e)]
     out.append("unlock" if len(locked) == len(elements) else "lock")  # spec/ui 39 §5
     out.append("hide")  # spec/ui 39 §4

@@ -46,6 +46,32 @@ Aberta em 2026‑11‑12. Tudo o que for feito a partir desta data entra aqui.
   simplificadas ao entrar, com aviso.
 - **Converter em forma livre.** Editar > Converter em forma livre junta os objetos e
   formas livres selecionados numa peça só.
+- **Estilo de cotas e textos.** Toda cota, texto, rótulo, linha e símbolo pode ter fonte
+  própria (qualquer fonte instalada), altura, negrito, itálico, cor do texto, cor e
+  espessura da linha, na ficha Propriedades; com várias anotações selecionadas, a escolha
+  vale para todas. Cor e espessura escolhidas passam por cima da pena; "Seguir a pena"
+  volta ao padrão. (spec/ui 55)
+- **Texto e marcador da cota.** Cada trecho da cota pode ter o texto trocado (na ficha ou
+  com clique duplo no número): `<medida>` continua acompanhando o modelo
+  ("≈ <medida> (var.)"); sem ele o texto fica fixo e aparece sublinhado na tela, para
+  não esquecer. Prefixo, sufixo, casas decimais da cota e o marcador: traço a 45°, seta
+  cheia, seta aberta, ponto ou nenhum. (spec/ui 55)
+- **Localizar e substituir.** Editar > Localizar e substituir (**Ctrl+Shift+F**): acha
+  elementos por classe e por critérios (tipo, nome, código, camada, situação, material,
+  pavimento, texto, qualquer propriedade ou quantidade, com "é", "contém", "<", "entre"…)
+  no pavimento ou em todos; seleciona, soma ou tira da seleção; critérios salvos com nome
+  no projeto. A aba Substituir troca texto das anotações, nome, código, propriedade, tipo,
+  camada, situação ou estilo nos achados ou na seleção, de uma vez (um Desfazer).
+  (spec/ui 55)
+- **Conta‑gotas: pegar e aplicar ajustes.** **Alt+clique** num elemento pega os ajustes
+  dele (tipo, alturas, linha de referência, estilo, camada, situação; nunca a posição) e
+  **Ctrl+Alt+clique** aplica em outro; também pelos botões Pegar/Aplicar ajustes da
+  mini‑barra e do menu Editar, para vários selecionados de uma vez. Com uma ferramenta de
+  criação ativa (Parede, Laje…), o Alt+clique leva os ajustes para ela. (spec/ui 55)
+- **Cópia ao arrastar.** Ao arrastar a seleção, apertar **Ctrl** mostra um + no cursor:
+  soltar deixa a cópia e cada clique seguinte faz mais uma, em qualquer direção, até Esc
+  (Tab digita distância e ângulo; Cópias faz a série). **Ctrl+D** abre o Copiar sem
+  arrastar. (spec/ui 55)
 
 ### Melhorias
 - Ao fim de um pedido ao Assistente, os objetos (mobiliário, louças, eletrodomésticos)

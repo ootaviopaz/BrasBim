@@ -195,6 +195,9 @@ class PlanView(QWidget, ToolInput, FrameHistory):
     tool_options_changed = Signal()
     tool_requested = Signal(str)  # Enter repete a última ferramenta (spec/ui 23 §3.2)
     context_requested = Signal(object, object)  # (GlobalId ou None, posição global)
+    # Conta-gotas (spec/ui 55 §4.1): (GlobalId, aplicar?) — Alt+clique pega,
+    # Ctrl+Alt+clique aplica.
+    settings_clicked = Signal(str, bool)
     object_dropped = Signal(str, float, float)  # objeto arrastado da biblioteca, ponto
 
     def __init__(self, toolbox: ToolBox, parent=None):
@@ -217,6 +220,7 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         self.show_space_numbers = False  # número antes do nome do ambiente (spec/ui 13 §3.4)
         self.show_weights = True  # espessuras de linha do papel (spec/ui 13 §8)
         self.show_view_symbols = True  # símbolos de corte e fachada (spec/ui 14 §7)
+        self.show_fixed_marks = True  # texto de cota fixo sublinhado (spec/ui 55 §2.2)
         self.pens = pens.DEFAULT  # tabela de penas da janela (spec/ui 27)
         # Unidades do desenho por pixel de tela: 1 na tela; dpi/96 no papel (spec/ui 15).
         self.unit = 1.0
@@ -445,6 +449,10 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             return None
         found = self.ctx.plan.colors.get(owner)
         return QColor(found) if found else None
+
+    def _own(self, owner, color: str) -> QColor:
+        """Cor própria da anotação (spec/ui 55 §2.1); a da situação ainda vence."""
+        return self.tint(owner) or QColor(self.pens.own(color))
 
     def _rings_path(self, rings) -> QPainterPath:
         path = QPainterPath()
@@ -690,24 +698,36 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         entry = cache.get(id(prims))
         found = entry[1] if entry is not None and entry[0] is prims else None
         if found is None:
-            groups: dict[tuple[float, str], QPainterPath] = {}
+            groups: dict[tuple, QPainterPath] = {}
             for stroke in prims.strokes:
-                path = groups.setdefault((stroke.weight, stroke.dash or "solid"),
-                                         QPainterPath())
+                # cor e espessura do estilo da anotação (spec/ui 55 §2.1)
+                key = (stroke.weight, stroke.dash or "solid", stroke.color, stroke.pen)
+                path = groups.setdefault(key, QPainterPath())
                 path.addPolygon(QPolygonF([QPointF(x, y) for x, y, *_ in stroke.points]))
                 if stroke.closed:
                     path.closeSubpath()
             for lines, weight in prims.bulk:  # desenho importado (arrays, spec/ui 22 §7)
-                path = groups.setdefault((weight, "solid"), QPainterPath())
+                path = groups.setdefault((weight, "solid", None, True), QPainterPath())
                 pts = [QPointF(x, y) for x, y in lines.coords.tolist()]
                 for i, (a, b) in enumerate(zip(lines.starts[:-1].tolist(),
                                                lines.starts[1:].tolist(), strict=True)):
                     path.addPolygon(QPolygonF(pts[a:b]))
                     if lines.closed[i]:
                         path.closeSubpath()
-            found = [(w, d, path) for (w, d), path in groups.items()]
+            found = [(w, d, c, pen, path) for (w, d, c, pen), path in groups.items()]
             cache[id(prims)] = (prims, found)  # o objeto junto: o id não é reaproveitado
         return found
+
+    def _text_font(self, text) -> QFont | None:
+        """Fonte do texto da anotação: a do estilo (spec/ui 55 §2.1) ou a da interface."""
+        font = self._font(text.height)
+        if font is None:
+            return None
+        if text.font:
+            font.setFamily(text.font)
+        font.setBold(text.bold)
+        font.setItalic(text.italic)
+        return font
 
     def _draw_annotations(self, painter: QPainter) -> None:
         """Traços e textos das anotações (as hachuras vêm nas regiões), spec/ui 13."""
@@ -725,17 +745,21 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             painter.setTransform(world, True)
             if prims.bulk:  # desenho importado: traço fino, sem suavizar (bem mais rápido)
                 painter.setRenderHint(QPainter.Antialiasing, False)
-            for weight, dash, path in self._stroke_paths(prims):
+            selected = owner in selection
+            for weight, dash, own, pen, path in self._stroke_paths(prims):
                 # Espessura em unidades do modelo: a transformação a leva aos pixels.
-                px = self._line_px(self.pens.weight(category, weight))
-                painter.setPen(QPen(color, px / self.scale, dashes.get(dash, Qt.SolidLine)))
+                px = self._line_px(self.pens.weight(category, weight) if pen else weight)
+                stroke_color = color if selected or not own else self._own(owner, own)
+                painter.setPen(QPen(stroke_color, px / self.scale,
+                                    dashes.get(dash, Qt.SolidLine)))
                 painter.drawPath(path)
             painter.restore()
-            painter.setPen(QPen(C["select"] if owner in selection else ink))
             for text in prims.texts:
-                font = self._font(text.height)
+                font = self._text_font(text)
                 if font is None:
                     continue
+                painter.setPen(QPen(C["select"] if selected else
+                                    self._own(owner, text.color) if text.color else ink))
                 painter.save()
                 painter.setFont(font)
                 painter.translate(self.to_screen(text.at))
@@ -750,6 +774,10 @@ class PlanView(QWidget, ToolInput, FrameHistory):
                 y = (0.0 if flipped else -height) if text.valign == "bottom" else -height / 2
                 painter.drawText(QRectF(x, y, width + 2, height), Qt.AlignLeft | Qt.AlignBottom,
                                  text.text)
+                if text.fixed and self.show_fixed_marks:  # texto de cota que não acompanha
+                    mark = QPen(C["select"], 1, Qt.DashLine)
+                    painter.setPen(mark)
+                    painter.drawLine(QPointF(x, y + height + 1), QPointF(x + width, y + height + 1))
                 painter.restore()
 
     def _draw_hover(self, painter: QPainter) -> None:
@@ -771,7 +799,7 @@ class PlanView(QWidget, ToolInput, FrameHistory):
                                                 self.origin.x(), self.origin.y()), True)
                 painter.setPen(QPen(color, 2.5 * self.unit / self.scale))
                 painter.setRenderHint(QPainter.Antialiasing, False)
-                for _, _, path in self._stroke_paths(prims):
+                for *_, path in self._stroke_paths(prims):
                     painter.drawPath(path)
                 painter.restore()
 
@@ -815,7 +843,7 @@ class PlanView(QWidget, ToolInput, FrameHistory):
                                             self.origin.x(), self.origin.y()), True)
             painter.setPen(QPen(QColor(color), 1.5 * self.unit / self.scale))
             painter.setRenderHint(QPainter.Antialiasing, False)
-            for _, _, path in self._stroke_paths(prims):
+            for *_, path in self._stroke_paths(prims):
                 painter.drawPath(path)
             painter.restore()
 
@@ -963,6 +991,8 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             self.context_requested.emit(gid, event.globalPosition().toPoint())
             return
         button = {Qt.LeftButton: "left", Qt.RightButton: "right"}.get(event.button())
+        if button == "left" and self.settings_click(p, self._mods(event)):
+            return
         if button:
             tool.press(p, self._mods(event), button)
             if button == "left":  # ponto anterior da coordenada relativa (spec/ui 24 §4)
@@ -1038,6 +1068,8 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         return super().event(event)
 
     def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Alt, Qt.Key_Control):  # conta-gotas (spec/ui 55 §4.1)
+            self.settings_cursor(event.modifiers())
         if self.tool_key(event):
             return
         if event.key() != Qt.Key_Space and self.forward_text(event):
@@ -1052,6 +1084,8 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event):
+        if event.key() in (Qt.Key_Alt, Qt.Key_Control):
+            self.settings_cursor(event.modifiers())
         if event.key() == Qt.Key_Space and not event.isAutoRepeat():
             self._space = False
             self.unsetCursor()
