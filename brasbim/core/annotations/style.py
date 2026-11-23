@@ -21,8 +21,13 @@ from brasbim.core.annotations.prims import Fill, Prims
 from brasbim.core.document import OpError
 
 KEY = "style"
-TEXT_FIELDS = ("font", "size", "bold", "italic", "text_color")
-LINE_FIELDS = ("line_color", "weight")
+TEXT_FIELDS = ("font", "size", "bold", "italic", "text_pen", "text_color")
+LINE_FIELDS = ("pen", "line_color", "weight")
+# Pena da tabela (spec/ui 57): ``pen`` nas linhas e ``text_pen`` no texto. A cor e a
+# espessura soltas (``*_color``, ``weight``) ficam só para arquivos de antes; escolher a
+# pena as tira.
+PEN_FIELDS = ("pen", "text_pen")
+REPLACES = {"pen": ("line_color", "weight"), "text_pen": ("text_color",)}
 FIELDS = TEXT_FIELDS + LINE_FIELDS
 SIZES = (1.5, 2.0, 2.5, 3.0, 3.5, 5.0, 7.0)  # mm de papel (lista; aceita digitado)
 SIZE_RANGE = (0.5, 50.0)
@@ -52,6 +57,10 @@ def edit_style(doc, elements, **fields):
     if unknown:
         raise OpError(f"campo de estilo desconhecido: {sorted(unknown)}")
     validate(fields)
+    fields = dict(fields)
+    for pen_field, old in REPLACES.items():  # a pena escolhida tira a cor solta
+        if fields.get(pen_field) is not None:
+            fields.update(dict.fromkeys(old))
     ops = []
     for element in elements:
         if not styled(element):
@@ -98,6 +107,12 @@ def validate(style: dict | None) -> None:
             raise OpError(f"cor inválida: {value!r} (use #RRGGBB)")
         if key in ("bold", "italic") and not isinstance(value, bool):
             raise OpError(f"{key} é sim ou não")
+        if key in PEN_FIELDS:
+            from brasbim.core.pens import MAX_PENS
+
+            if not isinstance(value, int) or isinstance(value, bool) \
+                    or not 1 <= value <= MAX_PENS:
+                raise OpError(f"número de pena de 1 a {MAX_PENS}")
 
 
 def apply(built: Prims, style: dict | None, k: float) -> Prims:
@@ -115,6 +130,8 @@ def apply(built: Prims, style: dict | None, k: float) -> Prims:
         text["italic"] = bool(style["italic"])
     if "text_color" in style:
         text["color"] = style["text_color"]
+    if "text_pen" in style:  # spec/ui 57
+        text["pen_no"] = int(style["text_pen"])
     for t in built.texts:
         changes = dict(text)
         if "size" in style:
@@ -125,10 +142,14 @@ def apply(built: Prims, style: dict | None, k: float) -> Prims:
         line["color"] = style["line_color"]
     if "weight" in style:
         line["weight"], line["pen"] = float(style["weight"]), False
+    if "pen" in style:  # spec/ui 57
+        line["pen_no"] = int(style["pen"])
     out.strokes = [dataclasses.replace(s, **line) for s in built.strokes]
     for f in built.fills:
         fill = f.fill
         if "line_color" in style and fill.get("marker"):  # setas e pontos da cota
             fill = {**fill, "background": style["line_color"]}
+        if "pen" in style and fill.get("marker"):
+            fill = {**fill, "pen_no": int(style["pen"])}
         out.fills.append(Fill(f.rings, fill))
     return out

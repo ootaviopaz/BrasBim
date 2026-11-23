@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
-    QFontComboBox,
     QFormLayout,
     QHBoxLayout,
     QInputDialog,
@@ -26,7 +25,6 @@ from PySide6.QtWidgets import (
 )
 
 from brasbim.core import display_layers, edit_state, find, intervention
-from brasbim.core.annotations import drafting
 from brasbim.core.annotations import style as annotation_style
 from brasbim.core.document import OpError
 from brasbim.ui import theme
@@ -388,26 +386,32 @@ class FindDialog(QDialog):
     def _page_style(self) -> QWidget:
         page = QWidget()
         form = QFormLayout(page)
-        self.style_font = QFontComboBox()
-        self.style_font.insertItem(0, "(não mudar)")
-        self.style_font.setCurrentIndex(0)
+        from PySide6.QtGui import QFontDatabase
+
+        from brasbim.ui.selection_options import FIRST_FONTS
+
+        self.style_font = QComboBox()
+        self.style_font.addItem("(não mudar)", "keep")
+        self.style_font.addItem("Padrão", None)
+        for name in [*FIRST_FONTS, *sorted(set(QFontDatabase.families()) - set(FIRST_FONTS))]:
+            self.style_font.addItem(name, name)
         self.style_size = QComboBox()
         self.style_size.addItem("(não mudar)", None)
         for v in annotation_style.SIZES:
             self.style_size.addItem(f"{fmt(v)} mm", v)
-        self.style_text_color = QLineEdit()
-        self.style_text_color.setPlaceholderText("#RRGGBB (vazio: não mudar)")
-        self.style_line_color = QLineEdit()
-        self.style_line_color.setPlaceholderText("#RRGGBB (vazio: não mudar)")
-        self.style_weight = QComboBox()
-        self.style_weight.addItem("(não mudar)", None)
-        for w in drafting.LINE_WEIGHTS:
-            self.style_weight.addItem(f"{fmt(w)} mm", w)
+        from brasbim.core import pens
+        from brasbim.ui.selection_options import pen_combo
+
+        table = pens.resolve(self.session.doc)
+        # Penas da tabela (spec/ui 57); "(não mudar)" deixa como está.
+        self.style_text_pen = pen_combo(table, None, lambda v: None, "Pena do texto",
+                                        empty="(não mudar)")
+        self.style_pen = pen_combo(table, None, lambda v: None, "Pena da linha",
+                                   empty="(não mudar)")
         form.addRow("Fonte", self.style_font)
         form.addRow("Altura", self.style_size)
-        form.addRow("Cor do texto", self.style_text_color)
-        form.addRow("Cor da linha", self.style_line_color)
-        form.addRow("Espessura", self.style_weight)
+        form.addRow("Pena do texto", self.style_text_pen)
+        form.addRow("Pena da linha", self.style_pen)
         return page
 
     def targets(self) -> list[str]:
@@ -482,16 +486,13 @@ class FindDialog(QDialog):
                     return find.set_fields(doc, elements, property=(pset, prop, value))
             elif what == "style":
                 fields = {}
-                if self.style_font.currentIndex() > 0:
-                    fields["font"] = self.style_font.currentText()
+                if self.style_font.currentData() != "keep":
+                    fields["font"] = self.style_font.currentData()
                 for key, widget in (("size", self.style_size),
-                                    ("weight", self.style_weight)):
+                                    ("text_pen", self.style_text_pen),
+                                    ("pen", self.style_pen)):
                     if widget.currentData() is not None:
                         fields[key] = widget.currentData()
-                for key, widget in (("text_color", self.style_text_color),
-                                    ("line_color", self.style_line_color)):
-                    if widget.text().strip():
-                        fields[key] = widget.text().strip().upper()
                 if not fields:
                     raise OpError("escolha o que muda no estilo")
 

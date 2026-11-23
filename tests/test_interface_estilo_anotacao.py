@@ -4,7 +4,7 @@ desenho na planta."""
 
 import pytest
 from PySide6.QtCore import QPointF
-from PySide6.QtWidgets import QComboBox, QFontComboBox, QLineEdit
+from PySide6.QtWidgets import QComboBox, QLineEdit
 
 from brasbim.core.annotations import base, dimensions
 from brasbim.core.annotations import commands as ac
@@ -35,15 +35,15 @@ def test_ea05_varias_cotas_de_uma_vez(window):
     s.select([d.GlobalId for d in dims])
     window.properties._rebuild()
     rows = _rows(window, "Texto")
-    assert isinstance(rows["Fonte"], QFontComboBox)
+    assert rows["Fonte"].findData("Arial") >= 0
     altura = rows["Altura"]
     altura.setCurrentIndex(altura.findData(5.0))
     assert all(base.read_state(d)["style"] == {"size": 5.0} for d in dims)
     assert len(s.history.undo_stack[-1].ops) == 2  # uma transação para as duas
     window.properties._rebuild()
-    espessura = _rows(window, "Linha")["Espessura"]
-    espessura.setCurrentIndex(espessura.findData(0.5))
-    assert all(base.read_state(d)["style"] == {"size": 5.0, "weight": 0.5} for d in dims)
+    pena = _rows(window, "Linha")["Pena da linha"]
+    pena.setCurrentIndex(pena.findData(5))
+    assert all(base.read_state(d)["style"] == {"size": 5.0, "pen": 5} for d in dims)
     window.plan.grab()  # desenha com o estilo
     s.undo()
     assert all(base.read_state(d)["style"] == {"size": 5.0} for d in dims)

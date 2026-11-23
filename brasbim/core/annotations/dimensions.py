@@ -250,21 +250,54 @@ def _build(doc: Document, storey, state: dict) -> Prims:
                                       False, WEIGHT))
     marks = sorted({round(t, 9) for t in ts})
     _markers(out, state, marks, at, off, d, n, k)
+    shown = prims.readable(math.degrees(math.atan2(d[1], d[0])))
+    for index, value, place, home in text_spots(doc, state, k):
+        text, fixed = segment_text(doc, state, index, value)
+        if not text:
+            continue
+        out.texts.append(Text(place, text, TEXT * k, shown, "center", "bottom", fixed=fixed))
+        if math.dist(place, home) > TEXT * k:  # texto levado para longe: linha de chamada
+            out.strokes.append(Stroke((home, place), False, WEIGHT))
+    return out
+
+
+def text_spots(doc: Document, state: dict, k: float):
+    """(trecho, medida, lugar do texto, lugar de origem) de cada trecho da cota. O texto
+    pode ter sido levado (``text_moves``: ``{trecho: [ao longo, para fora]}``, em metros
+    no sistema da linha de cota; spec/ui 57 §4)."""
+    pts = points(doc, state)
+    d, n = frame(state, pts)
+    p0 = pts[0]
+    ts = sorted({round((p[0] - p0[0]) * d[0] + (p[1] - p0[1]) * d[1], 9) for p in pts})
     angle = math.degrees(math.atan2(d[1], d[0]))
     shown = prims.readable(angle)
     up = n if abs(((shown - angle) + 180.0) % 360.0 - 180.0) < 1.0 else (-n[0], -n[1])
+    moves = state.get("text_moves") or {}
+    off = state["offset"]
+    out = []
     index = 0
-    for a, b in itertools.pairwise(marks):
+    for a, b in itertools.pairwise(ts):
         if b - a <= 1e-6:
             continue
-        c = at((a + b) / 2, off)
-        text, fixed = segment_text(doc, state, index, b - a)
+        t, s = (a + b) / 2, off
+        home = (p0[0] + d[0] * t + n[0] * s + up[0] * TEXT_GAP * k,
+                p0[1] + d[1] * t + n[1] * s + up[1] * TEXT_GAP * k)
+        dt, ds = moves.get(str(index), (0.0, 0.0))
+        place = (home[0] + d[0] * dt + n[0] * ds, home[1] + d[1] * dt + n[1] * ds)
+        out.append((index, b - a, place, home))
         index += 1
-        if not text:
-            continue
-        out.texts.append(Text((c[0] + up[0] * TEXT_GAP * k, c[1] + up[1] * TEXT_GAP * k),
-                              text, TEXT * k, shown, "center", "bottom", fixed=fixed))
     return out
+
+
+def text_move(doc: Document, state: dict, index: int, p) -> list[float]:
+    """Deslocamento ``[ao longo, para fora]`` que leva o texto do trecho ao ponto ``p``."""
+    storey = doc.get(state["storey"])
+    k = storeys.paper(storey, 1.0)
+    pts = points(doc, state)
+    d, n = frame(state, pts)
+    home = next(h for i, _, _, h in text_spots(doc, state, k) if i == index)
+    v = (p[0] - home[0], p[1] - home[1])
+    return [v[0] * d[0] + v[1] * d[1], v[0] * n[0] + v[1] * n[1]]
 
 
 # --- marcadores e texto (spec/ui 55 §2.1–§2.2) -------------------------------------------
@@ -337,6 +370,9 @@ def _validate(state: dict) -> None:
     for key, value in (state.get("texts") or {}).items():
         if not str(key).isdigit() or not isinstance(value, str):
             raise OpError("texto de trecho da cota inválido")
+    for key, value in (state.get("text_moves") or {}).items():
+        if not str(key).isdigit() or not isinstance(value, (list, tuple)) or len(value) != 2:
+            raise OpError("deslocamento do texto da cota inválido")
 
 
 def _mapped(state, fn, turn, mirrored, moving) -> dict:
@@ -351,6 +387,9 @@ def _mapped(state, fn, turn, mirrored, moving) -> dict:
     changes = {"points": out, "angle": turn(state["angle"]) % 360.0}
     if mirrored:
         changes["offset"] = -state["offset"]
+        if state.get("text_moves"):  # o texto levado fica do mesmo lado da linha
+            changes["text_moves"] = {i: [dt, -ds] for i, (dt, ds) in
+                                     state["text_moves"].items()}
     return changes
 
 
@@ -362,7 +401,7 @@ DIMENSION = base.Kind("dimension", "cota", "DIMENSION", None,
                       {"points": [], "direction": "aligned", "angle": 0.0, "offset": 0.0},
                       _build, _mapped, _depends, _validate,
                       optional=("marker", "marker_size", "texts", "prefix", "suffix",
-                                "decimals"))
+                                "decimals", "text_moves"))
 base.register_kind(DIMENSION)
 
 

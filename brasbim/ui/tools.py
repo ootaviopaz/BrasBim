@@ -632,6 +632,13 @@ class Tool:
         """Cursor com o + da cópia (spec/ui 55 §5)."""
         return False
 
+    # Estilo das próximas anotações (spec/ui 55 §2.3), escolhido na barra Opções; só as
+    # ferramentas de anotação o usam. ``None``: o padrão (pena da categoria).
+    style: dict | None = None
+
+    def style_kw(self) -> dict:
+        return {"style": dict(self.style)} if self.style else {}
+
     def transform_fn(self):
         """Transformação 2D que a ferramenta aplicaria agora à seleção (fantasma no 3D,
         spec/ui 07 §3.3), ou None."""
@@ -799,8 +806,15 @@ def _structure_handles(doc, gid: str) -> list[tuple[str, Point]]:
         d, n = annotation_dims.frame(state, pts)
         ts = [(p[0] - pts[0][0]) * d[0] + (p[1] - pts[0][1]) * d[1] for p in pts]
         t, off = (min(ts) + max(ts)) / 2, state["offset"]
-        return [("dim_offset", (pts[0][0] + d[0] * t + n[0] * off,
-                                pts[0][1] + d[1] * t + n[1] * off))]
+        out = [("dim_offset", (pts[0][0] + d[0] * t + n[0] * off,
+                               pts[0][1] + d[1] * t + n[1] * off))]
+        # Alça de cada número: leva só o texto (spec/ui 57 §4); um pouco acima da base
+        # do texto, para não cair em cima da alça da linha de cota.
+        k = storeys.paper(doc.get(state["storey"]), 1.0)
+        up = annotation_dims.TEXT * k * 0.6
+        for index, _, place, _home in annotation_dims.text_spots(doc, state, k):
+            out.append((f"dim_text:{index}", (place[0] + n[0] * up, place[1] + n[1] * up)))
+        return out
     if element is None or not sc.is_structure(element):
         return []
     state = sc.read_state(doc, element)
@@ -1113,6 +1127,22 @@ class SelectTool(Tool):
             return lambda: sc.move_slab_vertex(doc, gid, int(which[6:]), q), q, ""
         if which == "space_label":
             return lambda: ac.edit_element(doc, gid, label_at=list(q)), q, ""
+        if which.startswith("dim_text:"):  # só o texto da cota (spec/ui 57 §4)
+            index = int(which.split(":", 1)[1])
+            element = doc.get(gid)
+            state = annotation_base.read_state(element)
+            k = storeys.paper(doc.get(state["storey"]), 1.0)
+            raise_by = annotation_dims.TEXT * k * 0.6  # a alça fica acima da base do texto
+            _, n = annotation_dims.frame(state, annotation_dims.points(doc, state))
+            target = (p[0] - n[0] * raise_by, p[1] - n[1] * raise_by)
+            self.snapped = snap.Snap(target, "free")
+            move = annotation_dims.text_move(doc, state, index, target)
+            moves = dict(state.get("text_moves") or {})
+            if math.hypot(*move) < 1e-6:
+                moves.pop(str(index), None)
+            else:
+                moves[str(index)] = [round(move[0], 6), round(move[1], 6)]
+            return (lambda: ac.edit_element(doc, gid, text_moves=moves or None), p, "")
         if which == "dim_offset":
             state = annotation_base.read_state(doc.get(gid))
             pts = annotation_dims.points(doc, state)
@@ -2669,7 +2699,7 @@ class LineTool(WallTool):
         if storey is not None:
             self.session.run(lambda: ac.create_annotation(
                 doc, "line2d", storey, points=points, closed=closed, weight=o.weight,
-                dash=o.dash))
+                dash=o.dash, **self.style_kw()))
 
     def shape_preview(self):
         pts = list(self.points)
@@ -2710,7 +2740,8 @@ class LevelTool(_PointTool):
         self.move(p, mods)
         storey, q, doc = self._storey(), self.snapped.point, self.session.doc
         if storey is not None:
-            self.session.run(lambda: ac.create_annotation(doc, "level_mark", storey, at=q))
+            self.session.run(lambda: ac.create_annotation(doc, "level_mark", storey, at=q,
+                                                          **self.style_kw()))
 
 
 class _TextOptions:
@@ -2746,7 +2777,8 @@ class TextTool(_PointTool):
             return
         self.session.run(lambda: ac.create_annotation(doc, "text", storey, at=q,
                                                       text=text.strip("\n"), size=o.size,
-                                                      angle=o.angle, align=o.align))
+                                                      angle=o.angle, align=o.align,
+                                                      **self.style_kw()))
 
 
 class NorthTool(_PointTool):
@@ -2777,7 +2809,7 @@ class NorthTool(_PointTool):
         angle = math.degrees(math.atan2(q[1] - a[1], q[0] - a[0]))
         if storey is not None:
             self.session.run(lambda: ac.create_annotation(doc, "north", storey, at=a,
-                                                          angle=angle))
+                                                          angle=angle, **self.style_kw()))
 
     def cancel(self):
         if self.points:
@@ -2968,7 +3000,8 @@ class _ClickTool(_PointTool):
 
     def _create(self, state: dict) -> None:
         doc, storey = self.session.doc, self.session.storey
-        self.session.run(lambda: ac.create_annotation(doc, self.prefix, storey, **state))
+        self.session.run(lambda: ac.create_annotation(doc, self.prefix, storey, **state,
+                                                      **self.style_kw()))
 
 
 class CircleTool(_ClickTool):
@@ -3067,7 +3100,7 @@ class SplineTool(LineTool):
         if storey is not None:
             self.session.run(lambda: ac.create_annotation(
                 doc, "spline2d", storey, points=points, closed=closed, weight=o.weight,
-                dash=o.dash))
+                dash=o.dash, **self.style_kw()))
 
     def shape_preview(self):
         pts = list(self.points)
@@ -3257,7 +3290,8 @@ class RevisionTool(SlabTool):
         if storey is not None:
             number = o.number or drawing2d.next_revision(doc)
             self.session.run(lambda: ac.create_annotation(
-                doc, "revision", storey, outline=points, number=number, note=o.note))
+                doc, "revision", storey, outline=points, number=number, note=o.note,
+                **self.style_kw()))
         self.points = []
 
 
@@ -3852,6 +3886,7 @@ class DimensionTool(_PointTool):
     def __init__(self, ctx):
         super().__init__(ctx)
         self.direction = "aligned"
+        self.marker: str | None = None  # marcador das próximas cotas (spec/ui 55 §2.3)
         self.items: list[tuple] = []  # (ponto, referência)
         self.hover: tuple | None = None
 
@@ -3893,8 +3928,11 @@ class DimensionTool(_PointTool):
         items, (direction, angle) = list(self.items), DIM_DIRECTIONS[self.direction]
         self.items, self.fixed = [], {}
         if storey is not None:
+            extra = dict(self.style_kw())
+            if self.marker:  # marcador escolhido na barra Opções (spec/ui 55 §2.3)
+                extra["marker"] = self.marker
             self.session.run(lambda: ac.create_dimension(doc, storey, items, direction, angle,
-                                                         offset))
+                                                         offset, **extra))
 
     def press(self, p, mods, button="left"):
         if button != "left":

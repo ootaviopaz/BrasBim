@@ -118,9 +118,19 @@ def test_ui34_barra_dimensionavel_e_grupos(window):
 # --- UI31–UI32: barra de opções -------------------------------------------------------
 
 
+def _editable_bar(window):
+    """Campos editáveis na barra Opções (sem seleção, nenhum)."""
+    from PySide6.QtWidgets import QComboBox, QLineEdit
+
+    bar = window.options_bar
+    widgets = [bar.widgetForAction(a) for a in bar.actions()]
+    s = window.session
+    return bool(s.selection) and any(isinstance(w, (QComboBox, QLineEdit)) for w in widgets)
+
+
 def test_ui31_barra_de_opcoes_da_parede(window):
     s = window.session
-    assert not window.options_bar.isVisible()
+    assert not _editable_bar(window)
     window.tool_actions["wall"].trigger()
     assert window.toolbox.active.name == "wall" and window.options_bar.isVisible()
     forms = {a.data(): a for a in window.options_bar.actions() if a.data() in
@@ -132,7 +142,7 @@ def test_ui31_barra_de_opcoes_da_parede(window):
     (wall,) = _walls(s)
     assert cmd.read_state(s.doc, wall)["path"]["kind"] == "arc"
     window.tool_actions["select"].trigger()
-    assert not window.options_bar.isVisible()
+    assert not _editable_bar(window)  # Selecionar: só a dica ou a seleção (spec/ui 56)
     window.tool_actions["wall"].trigger()  # lembra a última forma
     assert window.toolbox.active.name == "arc"
 

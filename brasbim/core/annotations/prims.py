@@ -9,6 +9,7 @@ para os preenchimentos, cada grupo com o seu ``IfcStyledItem`` [IFC-ANNOT].
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from dataclasses import dataclass, field
 
@@ -34,6 +35,7 @@ class Stroke:
     # espessura final (``pen`` False: a pena da categoria não a muda).
     color: str | None = None
     pen: bool = True
+    pen_no: int | None = None  # pena da tabela escolhida na anotação (spec/ui 57)
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,7 @@ class Text:
     color: str | None = None
     # Só na tela: sublinhado do texto de cota trocado que não acompanha a medida (§2.2).
     fixed: bool = False
+    pen_no: int | None = None  # pena da tabela escolhida para o texto (spec/ui 57)
 
 
 @dataclass(frozen=True)
@@ -174,6 +177,22 @@ def write(doc: Document, element, prims: Prims, compact: bool = False) -> None:
     ifc = doc.ifc
     items = []
     by_style: dict[tuple, list] = {}
+    if any(s.pen_no for s in prims.strokes) or any(t.pen_no for t in prims.texts) \
+            or any(f.fill.get("pen_no") for f in prims.fills):
+        # Pena escolhida (spec/ui 57): o arquivo leva a cor e a espessura da tabela do
+        # projeto; a tela usa a tabela da janela.
+        from brasbim.core import pens as pen_tables
+
+        table = pen_tables.resolve(doc)
+        prims = Prims(
+            strokes=[s if not s.pen_no else dataclasses.replace(
+                s, color=table.number(s.pen_no).color, weight=table.number(s.pen_no).weight,
+                pen=False) for s in prims.strokes],
+            texts=[t if not t.pen_no else dataclasses.replace(
+                t, color=table.number(t.pen_no).color) for t in prims.texts],
+            fills=[f if not f.fill.get("pen_no") else Fill(f.rings, {
+                **f.fill, "background": table.number(f.fill["pen_no"]).color})
+                for f in prims.fills], bulk=prims.bulk)
     for s in prims.strokes:
         if compact:
             curve = _indexed(ifc, s)

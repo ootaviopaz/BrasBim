@@ -15,7 +15,7 @@ import math
 
 import ifcopenshell.util.element
 
-from brasbim.core import display_layers, geom2d, guid, intervention
+from brasbim.core import display_layers, element_pens, geom2d, guid, intervention
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import commands as door_cmd
 from brasbim.core.fillings import doors
@@ -765,7 +765,8 @@ def copy_elements(doc: Document, gids, vector) -> Transaction:
         lambda items: _misc_ops(doc, items, fn, copying=True))
     tx = _hosted_copies(doc, tx, gids, vector)
     # a cópia fica na camada e na situação do original (spec/ui 18 §5, spec/ui 31 §2)
-    return intervention.inherit(doc, display_layers.inherit(doc, tx, gids), gids)
+    tx = intervention.inherit(doc, display_layers.inherit(doc, tx, gids), gids)
+    return element_pens.inherit(doc, tx, gids)  # e as penas (spec/ui 57)
 
 
 MAX_COPIES = 1000
@@ -802,8 +803,10 @@ def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transactio
         lambda found: _grid_ops(doc, found, fn, mirror_axis=axis, copying=keep),
         lambda ids: _skylight_ops(doc, ids, fn, mirror_axis=axis, copying=keep),
         lambda items: _misc_ops(doc, items, fn, mirror_axis=axis, copying=keep))
-    return (intervention.inherit(doc, display_layers.inherit(doc, tx, gids), gids) if keep
-            else tx)
+    if not keep:
+        return tx
+    tx = intervention.inherit(doc, display_layers.inherit(doc, tx, gids), gids)
+    return element_pens.inherit(doc, tx, gids)  # o espelho com cópia leva as penas
 
 
 def stretch_elements(doc: Document, gids, area, vector) -> Transaction:

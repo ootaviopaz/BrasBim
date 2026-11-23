@@ -232,8 +232,9 @@ até Esc. Os demais pontos ficam como propostos.
   segue com o ponto de base (`Tool.handoff`/`take`); cursor com + (`Qt.DragCopyCursor`);
   Ctrl+D no menu Copiar. Testes CA01–CA04.
 
-**Fica para depois:** estilo na barra Opções das ferramentas Cota/Texto/Etiqueta (e o
-conta‑gotas levando o estilo para elas); conta‑gotas e cópia com Ctrl na vista 3D;
+**Estilo na barra Opções (2026‑11‑23, 2ª rodada):** feito para as ferramentas de anotação
+e para a seleção (spec/ui 56 §3). **Fica para depois:** o conta‑gotas levando o estilo
+para a ferramenta de anotação; conta‑gotas e cópia com Ctrl na vista 3D;
 `Pset_*Common` de mesmo nome entre classes diferentes (§4.2, última linha); cor e fonte
 no DXF exportado; lista das quantidades existentes no campo Quantidade.
 

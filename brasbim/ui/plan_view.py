@@ -450,6 +450,16 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         found = self.ctx.plan.colors.get(owner)
         return QColor(found) if found else None
 
+    def _element_pen(self, owner, which: str):
+        """Pena escolhida no elemento (``cut``, ``fill``, ``view``; spec/ui 57) ou None."""
+        number = self.ctx.plan.element_pens.get(owner, {}).get(which) \
+            if hasattr(self.ctx.plan, "element_pens") else None
+        return self.pens.number(number) if number is not None else None
+
+    def _pen_no(self, number: int):
+        """Pena da tabela da janela (anotação com pena, spec/ui 57)."""
+        return self.pens.number(number)
+
     def _own(self, owner, color: str) -> QColor:
         """Cor própria da anotação (spec/ui 55 §2.1); a da situação ainda vence."""
         return self.tint(owner) or QColor(self.pens.own(color))
@@ -492,7 +502,14 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             selected = shape.owner in selection
             pens_ = self.pens
             tint = self.tint(shape.owner)
-            if role == "below":
+            own = self._element_pen(shape.owner, "view")  # spec/ui 57
+            if own is not None and role != "below":
+                pen = QPen(C["select"] if selected else tint or QColor(own.color),
+                           2 * self.unit if selected else max(self.unit,
+                                                              self._px(own.weight / 1000.0)),
+                           Qt.DashLine if role in ("wall_above", "slab_above")
+                           else Qt.SolidLine)
+            elif role == "below":
                 pen = QPen(QColor(pens_.color("below")),
                            max(self.unit, self._px(pens_.weight("below", BELOW_WEIGHT))),
                            Qt.DashLine)
@@ -519,15 +536,24 @@ class PlanView(QWidget, ToolInput, FrameHistory):
                         "line_color": pens.INK, "source": "situation",
                         "spacing": SITUATION_HATCH_SPACING,
                         "background": pens.INK if pattern == "solid" else None}
+            elif region.pen_no is not None:  # pena da hachura do elemento (spec/ui 57)
+                color = self.pens.number(region.pen_no).color
+                fill = {**fill, "line_color": color,
+                        "background": color if fill.get("background") else None}
+            elif fill.get("pen_no") is not None:  # seta/ponto da cota com pena (spec/ui 57)
+                fill = {**fill, "background": self.pens.number(fill["pen_no"]).color}
             self._draw_region(painter, self._rings_path(region.rings), fill)
         painter.setBrush(Qt.NoBrush)
         for edge in plan.edges:
             color = edge.color if edge.color.upper() not in pens.NEUTRAL \
                 else self.pens.color(edge.pen)
+            width = self.pens.weight(edge.pen, edge.weight)
+            if edge.pen_no is not None:  # pena do contorno do elemento (spec/ui 57)
+                own = self.pens.number(edge.pen_no)
+                color, width = own.color, own.weight / 1000.0
             if edge.tint and not black:
                 color = edge.tint
-            painter.setPen(QPen(QColor(color), max(self.unit, self._px(
-                self.pens.weight(edge.pen, edge.weight)))))
+            painter.setPen(QPen(QColor(color), max(self.unit, self._px(width))))
             painter.drawPath(self._rings_path(edge.rings))
         for shape in rest:
             role = shape.role
@@ -558,21 +584,25 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             elif role in ("column_view", "beam_view", "column_above", "beam_above"):
                 above = role.endswith("above")
                 category = "above" if above else "view"
+                own = self._element_pen(shape.owner, "view")
+                weight = (own.weight / 1000.0 if own is not None else
+                          self.pens.weight(category, ABOVE_WEIGHT if above else VIEW_WEIGHT))
                 painter.setPen(QPen(
                     C["select"] if selected else self.tint(shape.owner)
-                    or QColor(self.pens.color(category)),
-                    2 * self.unit if selected else max(self.unit, self._px(self.pens.weight(
-                        category, ABOVE_WEIGHT if above else VIEW_WEIGHT))),
+                    or QColor(own.color if own is not None else self.pens.color(category)),
+                    2 * self.unit if selected else max(self.unit, self._px(weight)),
                     Qt.DashLine if above else Qt.SolidLine))
                 painter.setBrush(Qt.NoBrush)
             else:
                 thin = role in ("door_swing", "window_sash", "window_glass")
                 category = "swing" if role == "door_swing" else "opening"
+                own = self._element_pen(shape.owner, "cut")  # pena da esquadria (spec/ui 57)
                 color = C["select"] if selected else self.tint(shape.owner) \
-                    or QColor(self.pens.color(category))
+                    or QColor(own.color if own is not None else self.pens.color(category))
+                scale = (own.weight / pens.CATEGORIES[category][1] if own is not None
+                         else self.pens.scale(category))
                 style = Qt.DashLine if role == "door_hidden" else Qt.SolidLine
-                painter.setPen(QPen(color, (0.8 if thin else 1.3) * self.unit
-                                    * self.pens.scale(category), style))
+                painter.setPen(QPen(color, (0.8 if thin else 1.3) * self.unit * scale, style))
                 painter.setBrush(QBrush(color) if role == "door_frame" else Qt.NoBrush)
             painter.drawPath(path)
 
@@ -580,10 +610,12 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         """Símbolo do objeto paramétrico (objeto-parametrico.md §7): linha fina; o contorno
         com fundo cobre o que fica por baixo; acima do plano de corte, tracejado."""
         path = self._path(shape.points, shape.closed)
+        own = self._element_pen(shape.owner, "cut")  # pena do objeto (spec/ui 57)
         color = C["select"] if selected else self.tint(shape.owner) \
-            or QColor(self.pens.color("object"))
-        width = 1.6 * self.unit if selected else max(
-            self.unit, self._px(self.pens.weight("object", ABOVE_WEIGHT)))
+            or QColor(own.color if own is not None else self.pens.color("object"))
+        weight = own.weight / 1000.0 if own is not None else self.pens.weight("object",
+                                                                              ABOVE_WEIGHT)
+        width = 1.6 * self.unit if selected else max(self.unit, self._px(weight))
         style = Qt.DashLine if shape.role == "object_above" else Qt.SolidLine
         if shape.role in ("object_fill", "plant_fill") and shape.closed:
             painter.fillPath(path, C["background"])
@@ -701,20 +733,21 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             groups: dict[tuple, QPainterPath] = {}
             for stroke in prims.strokes:
                 # cor e espessura do estilo da anotação (spec/ui 55 §2.1)
-                key = (stroke.weight, stroke.dash or "solid", stroke.color, stroke.pen)
+                key = (stroke.weight, stroke.dash or "solid", stroke.color, stroke.pen,
+                       stroke.pen_no)
                 path = groups.setdefault(key, QPainterPath())
                 path.addPolygon(QPolygonF([QPointF(x, y) for x, y, *_ in stroke.points]))
                 if stroke.closed:
                     path.closeSubpath()
             for lines, weight in prims.bulk:  # desenho importado (arrays, spec/ui 22 §7)
-                path = groups.setdefault((weight, "solid", None, True), QPainterPath())
+                path = groups.setdefault((weight, "solid", None, True, None), QPainterPath())
                 pts = [QPointF(x, y) for x, y in lines.coords.tolist()]
                 for i, (a, b) in enumerate(zip(lines.starts[:-1].tolist(),
                                                lines.starts[1:].tolist(), strict=True)):
                     path.addPolygon(QPolygonF(pts[a:b]))
                     if lines.closed[i]:
                         path.closeSubpath()
-            found = [(w, d, c, pen, path) for (w, d, c, pen), path in groups.items()]
+            found = [(*key, path) for key, path in groups.items()]
             cache[id(prims)] = (prims, found)  # o objeto junto: o id não é reaproveitado
         return found
 
@@ -746,10 +779,16 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             if prims.bulk:  # desenho importado: traço fino, sem suavizar (bem mais rápido)
                 painter.setRenderHint(QPainter.Antialiasing, False)
             selected = owner in selection
-            for weight, dash, own, pen, path in self._stroke_paths(prims):
+            for weight, dash, own, pen, pen_no, path in self._stroke_paths(prims):
+                chosen = None
+                if pen_no is not None:  # pena escolhida na anotação (spec/ui 57)
+                    chosen = self.pens.number(pen_no)
+                    weight, pen, own = chosen.weight, False, None
                 # Espessura em unidades do modelo: a transformação a leva aos pixels.
                 px = self._line_px(self.pens.weight(category, weight) if pen else weight)
                 stroke_color = color if selected or not own else self._own(owner, own)
+                if chosen is not None and not selected:
+                    stroke_color = self.tint(owner) or QColor(chosen.color)
                 painter.setPen(QPen(stroke_color, px / self.scale,
                                     dashes.get(dash, Qt.SolidLine)))
                 painter.drawPath(path)
@@ -758,8 +797,13 @@ class PlanView(QWidget, ToolInput, FrameHistory):
                 font = self._text_font(text)
                 if font is None:
                     continue
-                painter.setPen(QPen(C["select"] if selected else
-                                    self._own(owner, text.color) if text.color else ink))
+                if selected:
+                    text_color = C["select"]
+                elif text.pen_no is not None:  # pena escolhida no texto (spec/ui 57)
+                    text_color = self.tint(owner) or QColor(self.pens.number(text.pen_no).color)
+                else:
+                    text_color = self._own(owner, text.color) if text.color else ink
+                painter.setPen(QPen(text_color))
                 painter.save()
                 painter.setFont(font)
                 painter.translate(self.to_screen(text.at))

@@ -110,6 +110,7 @@ class Region:
     tint: str | None = None  # cor da situação na vista Projeto (spec/ui 31 §3)
     # Hachura da situação em Imprimir em preto (spec/ui 31 §13): pattern e angle.
     hatch: dict | None = field(default=None, hash=False)
+    pen_no: int | None = None  # pena da hachura escolhida no elemento (spec/ui 57)
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,7 @@ class Edge:
     color: str
     pen: str = "cut"
     tint: str | None = None  # cor da situação na vista Projeto (spec/ui 31 §3)
+    pen_no: int | None = None  # pena do contorno escolhida no elemento (spec/ui 57)
 
 
 @dataclass
@@ -137,6 +139,8 @@ class Plan:
     locked: set = field(default_factory=set)
     # Categoria da tabela de penas das anotações, por dono (spec/ui 27 §3).
     pens: dict = field(default_factory=dict)
+    # Penas escolhidas em cada elemento: dono → {cut, fill, view} (spec/ui 57).
+    element_pens: dict = field(default_factory=dict)
     # Cor da situação de cada dono na vista Projeto (spec/ui 31 §3); vazio = sem cores.
     colors: dict = field(default_factory=dict)
     # Hachura da situação de cada dono, pelo perfil municipal (spec/ui 31 §13).
@@ -599,15 +603,20 @@ def _regions(doc: Document, plan: Plan, cuts: list[_Cut], detail: str) -> None:
     def key(w):
         tint = tints[w.wall.GlobalId]
         hatch = plan.hatches.get(w.wall.GlobalId) or {}
-        return f"{w.type_id}|{tint}|{hatch.get('pattern')}|{hatch.get('angle')}" if tint             else w.type_id
+        base = f"{w.type_id}|{tint}|{hatch.get('pattern')}|{hatch.get('angle')}" if tint \
+            else w.type_id
+        chosen = plan.element_pens.get(w.wall.GlobalId)  # penas próprias (spec/ui 57)
+        return f"{base}|pens{sorted(chosen.items())}" if chosen else base
 
     by_type = _type_regions(cuts, key)
     styles = {key(w): w.style for w in cuts}
     tint_of = {key(w): tints[w.wall.GlobalId] for w in cuts}
     hatch_of = {key(w): plan.hatches.get(w.wall.GlobalId) for w in cuts}
+    pens_of = {key(w): plan.element_pens.get(w.wall.GlobalId, {}) for w in cuts}
     layered: set[str] = set()
     if detail == "layers":
-        plain = [w for w in cuts if w.pieces and not tints[w.wall.GlobalId]]
+        plain = [w for w in cuts if w.pieces and not tints[w.wall.GlobalId]
+                 and not plan.element_pens.get(w.wall.GlobalId)]
         found = layers.regions(doc, [w.wall for w in plain],
                                {w.wall.GlobalId: w.pieces for w in plain})
         owners = {r.owner for r in found}
@@ -620,11 +629,11 @@ def _regions(doc: Document, plan: Plan, cuts: list[_Cut], detail: str) -> None:
     for k, rings in by_type.items():
         if k not in layered:
             plan.regions.append(Region(k, rings, _fill_of_type(styles[k]), tint_of[k],
-                                       hatch_of[k]))
+                                       hatch_of[k], pens_of[k].get("fill")))
     for k, rings in by_type.items():
         style = styles[k]
         plan.edges.append(Edge(rings, style["line_weight"], style["line_color"],
-                               tint=tint_of[k]))
+                               tint=tint_of[k], pen_no=pens_of[k].get("cut")))
 
 
 # --- portas --------------------------------------------------------------------------
@@ -1088,6 +1097,8 @@ def _structure_regions(plan: Plan, found: list[_Element], cut: float, kinds) -> 
         ring = [list(r) for r in e.lines] if e.kind == "slab" else [list(e.ring)]
         tint = plan.colors.get(e.element.GlobalId)
         hatch = plan.hatches.get(e.element.GlobalId)
+        chosen = plan.element_pens.get(e.element.GlobalId, {})  # spec/ui 57
+        fill_pen, cut_pen = chosen.get("fill"), chosen.get("cut")
         if z0 < cut < z1 and e.cut_rings is not None:
             ring = e.cut_rings
         if z0 < cut < z1:
@@ -1098,14 +1109,18 @@ def _structure_regions(plan: Plan, found: list[_Element], cut: float, kinds) -> 
                         rings = clip.intersection(rings, e.cut_rings)
                         if not rings:
                             continue
-                    plan.regions.append(Region(e.element.GlobalId, rings, fill, tint, hatch))
+                    plan.regions.append(Region(e.element.GlobalId, rings, fill, tint, hatch,
+                                               fill_pen))
                     plan.edges.append(Edge(rings, LAYER_WEIGHT, materials.LINE_COLOR,
-                                           tint=tint))
+                                           tint=tint, pen_no=cut_pen))
             else:
-                plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint, hatch))
-            plan.edges.append(Edge(ring, e.edge_weight, materials.LINE_COLOR, tint=tint))
+                plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint, hatch,
+                                           fill_pen))
+            plan.edges.append(Edge(ring, e.edge_weight, materials.LINE_COLOR, tint=tint,
+                                   pen_no=cut_pen))
         elif e.kind == "slab" and z1 <= cut and e.fill["pattern"] != "none":
-            plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint, hatch))
+            plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint, hatch,
+                                       chosen.get("view") or fill_pen))
 
 
 def _carve(plan: Plan, first_region: int, first_edge: int, holes: Rings) -> None:
@@ -1114,10 +1129,10 @@ def _carve(plan: Plan, first_region: int, first_edge: int, holes: Rings) -> None
     if not holes:
         return
     plan.regions[first_region:] = [Region(r.key, clip.difference(r.rings, holes), r.fill,
-                                          r.tint, r.hatch)
+                                          r.tint, r.hatch, r.pen_no)
                                    for r in plan.regions[first_region:]]
     plan.edges[first_edge:] = [Edge(clip.difference(e.rings, holes), e.weight, e.color, e.pen,
-                                    e.tint)
+                                    e.tint, e.pen_no)
                                for e in plan.edges[first_edge:]]
 
 
@@ -1170,9 +1185,12 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
 def _storey_plan(doc: Document, storey, show_below: bool, detail: str,
                  show_above: bool) -> Plan:
     marks = intervention.marks(doc)
+    from brasbim.core import element_pens
+
     plan = Plan(locked=display_layers.locked_ids(doc),
                 colors={gid: color for gid, (color, _) in marks.items()},
-                hatches={gid: hatch for gid, (_, hatch) in marks.items()})
+                hatches={gid: hatch for gid, (_, hatch) in marks.items()},
+                element_pens=element_pens.plan_pens(doc))
     if show_below:
         storeys_ = doc.storeys()
         i = storeys_.index(storey)

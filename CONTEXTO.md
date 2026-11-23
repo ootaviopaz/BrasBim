@@ -25,8 +25,24 @@ conta‑gotas, cópia com Ctrl).*
 > arrastar**: Ctrl no arrasto da seleção mostra o +; ao soltar sai a cópia e o Copiar
 > segue do mesmo ponto de base (Tab, Cópias), Esc termina; Ctrl+D abre o Copiar. Ícones
 > novos `pick_settings`, `apply_settings`, `find`. Testes EA, LS, AJ, CA (spec §6).
-> **Pendente** (spec §7a): estilo na barra Opções das ferramentas de anotação, conta‑gotas
-> e Ctrl no 3D, `Pset_*Common` entre classes, cor/fonte no DXF.
+> **2ª rodada (mesmo dia):** estilo na barra Opções das ferramentas de anotação
+> (`Tool.style`/`style_kw`, `DimensionTool.marker`) e **barra Opções com a seleção**
+> (spec/ui 56, `ui/selection_options.py`): com Selecionar e algo selecionado, a barra
+> mostra e edita as características (parede, pilar, viga, laje, cobertura, porta/janela,
+> ambiente, objeto, anotações), "vários" quando diferem. Testes OB01–OB05.
+> **3ª rodada (mesmo dia), spec/ui 57:** **penas por elemento** (`core/element_pens.py`,
+> Pset `BrasBim_PenasElemento`, op `element_pens.set`): Contorno, Hachura, Vista em
+> parede/pilar/viga/laje/cobertura, Contorno em porta/janela/objeto; `Plan.element_pens`,
+> `Edge.pen_no`, `Region.pen_no` (paredes com penas próprias saem num grupo à parte);
+> herdadas na cópia/divisão, pelo conta‑gotas e pelas próximas criações
+> (`Session.new_pens`, barra das ferramentas). Anotações: `pen`/`text_pen` no estilo no
+> lugar de cor/espessura soltas (escolha do revisor; as soltas só ficam para arquivos de
+> antes). Seletor `selection_options.pen_combo` (número, amostra, espessura). **Texto da
+> cota movido:** `text_moves` na cota, alça `dim_text:N`, chamada quando longe. Testes
+> PE01–PE05, TC01–TC02.
+> **Pendente** (spec 55 §7a, 57 §7): penas por elemento nos cortes e fachadas;
+> conta‑gotas levando o estilo para a ferramenta de anotação; conta‑gotas e Ctrl no 3D;
+> `Pset_*Common` entre classes; cor/fonte no DXF; pontos (a)–(c) da spec 56.
 >
 > **Versão 0.0.2 em desenvolvimento (2026‑11‑12, pedido do revisor):** a partir desta
 > data toda mudança entra na 0.0.2 (`pyproject.toml` e `brasbim/__init__.py` já dizem

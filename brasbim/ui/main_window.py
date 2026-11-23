@@ -345,6 +345,7 @@ class MainWindow(QMainWindow):
         self.properties = PropertiesPanel(self.session, self.toolbox)
         self.properties.setMinimumWidth(310)
         self.properties.edit_type = self.edit_type
+        self.properties.pens_table = lambda: self.plan.pens  # penas da janela (spec/ui 57)
         self.properties.open_view = self.open_view
         self.properties.open_sheet = self.open_sheet
         self.properties.open_table = self.open_table
@@ -1018,6 +1019,8 @@ class MainWindow(QMainWindow):
             self._refresh_all()
         elif event == "selection":
             self.properties.refresh()
+            if self.toolbox.active.name == "select":  # barra com a seleção (spec/ui 56)
+                self.options_bar.show_for(self.toolbox.active)
             for view in self.section_views.values():
                 view.update()
             self.plan.update()

@@ -119,10 +119,12 @@ def dimension_points(items) -> list[dict]:
 
 
 def create_dimension(doc: Document, storey, points, direction: str = "aligned",
-                     angle: float = 0.0, offset: float = 0.0) -> Transaction:
-    """Cota pelos ``points`` (soltos ou ``(ponto, referência)``, spec/ui 13 §4)."""
+                     angle: float = 0.0, offset: float = 0.0, **extra) -> Transaction:
+    """Cota pelos ``points`` (soltos ou ``(ponto, referência)``, spec/ui 13 §4); ``extra``:
+    estilo, marcador e textos (spec/ui 55 §2)."""
     return create_annotation(doc, "dimension", storey, points=dimension_points(points),
-                             direction=direction, angle=float(angle), offset=float(offset))
+                             direction=direction, angle=float(angle), offset=float(offset),
+                             **extra)
 
 
 def edit_element(doc: Document, element, **changes) -> Transaction:

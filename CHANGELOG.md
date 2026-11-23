@@ -47,10 +47,18 @@ Aberta em 2026‑11‑12. Tudo o que for feito a partir desta data entra aqui.
 - **Converter em forma livre.** Editar > Converter em forma livre junta os objetos e
   formas livres selecionados numa peça só.
 - **Estilo de cotas e textos.** Toda cota, texto, rótulo, linha e símbolo pode ter fonte
-  própria (qualquer fonte instalada), altura, negrito, itálico, cor do texto, cor e
-  espessura da linha, na ficha Propriedades; com várias anotações selecionadas, a escolha
-  vale para todas. Cor e espessura escolhidas passam por cima da pena; "Seguir a pena"
-  volta ao padrão. (spec/ui 55)
+  própria (qualquer fonte instalada), altura, negrito, itálico, **pena da linha** e **pena
+  do texto**, na barra Opções e na ficha Propriedades; com várias anotações selecionadas,
+  a escolha vale para todas. (spec/ui 55, spec/ui 57)
+- **Penas em cada elemento.** Paredes, pilares, vigas, lajes e coberturas escolhem a pena
+  do **contorno** do corte, da **hachura** do corte e das linhas em **vista**; portas,
+  janelas e objetos, a do contorno. A lista mostra o número, a cor e a espessura de cada
+  pena da tabela; "Da tabela" volta ao padrão. Na barra Opções (também para os próximos
+  elementos da ferramenta) e no painel Propriedades; copiar e o conta‑gotas levam as
+  penas. (spec/ui 57)
+- **Mover só o texto da cota.** Cada número da cota tem uma alça: arrastar leva só o
+  texto, sem mexer na linha de cota; longe da linha, ganha uma linha de chamada.
+  "Textos de volta ao lugar" no painel. (spec/ui 57)
 - **Texto e marcador da cota.** Cada trecho da cota pode ter o texto trocado (na ficha ou
   com clique duplo no número): `<medida>` continua acompanhando o modelo
   ("≈ <medida> (var.)"); sem ele o texto fica fixo e aparece sublinhado na tela, para
@@ -68,6 +76,15 @@ Aberta em 2026‑11‑12. Tudo o que for feito a partir desta data entra aqui.
   **Ctrl+Alt+clique** aplica em outro; também pelos botões Pegar/Aplicar ajustes da
   mini‑barra e do menu Editar, para vários selecionados de uma vez. Com uma ferramenta de
   criação ativa (Parede, Laje…), o Alt+clique leva os ajustes para ela. (spec/ui 55)
+- **Barra Opções com a seleção.** Ao selecionar um elemento já criado, a barra Opções
+  mostra as características dele (tipo, espessura, alturas, linha de referência, seção,
+  medidas do vão, estilo…), para mudar a qualquer momento, como na criação. Com vários
+  selecionados, os valores que diferem aparecem como "vários" e a mudança vale para
+  todos. (spec/ui 56)
+- **Estilo nas ferramentas de anotação.** Cota, Texto, Rótulo, Linha, Curva, Círculo,
+  Arco, Nível, Norte e Marcador de alteração têm na barra Opções a fonte, a altura,
+  negrito, itálico e as penas das próximas anotações; a Cota também o marcador.
+  (spec/ui 55)
 - **Cópia ao arrastar.** Ao arrastar a seleção, apertar **Ctrl** mostra um + no cursor:
   soltar deixa a cópia e cada clique seguinte faz mais uma, em qualquer direção, até Esc
   (Tab digita distância e ângulo; Cópias faz a série). **Ctrl+D** abre o Copiar sem

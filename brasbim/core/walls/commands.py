@@ -183,7 +183,10 @@ def split_wall(doc: Document, wall, at) -> Transaction:
     ops += connections.sync_ops(doc, {wall.GlobalId: {**state, "path": first.to_dict()},
                                       new: {**state, "path": second.to_dict()}})
     tx = display_layers.inherit(doc, Transaction("Dividir parede", ops), [wall])
-    return intervention.inherit(doc, tx, [wall])  # o trecho novo tem a mesma situação
+    tx = intervention.inherit(doc, tx, [wall])  # o trecho novo tem a mesma situação
+    from brasbim.core import element_pens
+
+    return element_pens.inherit(doc, tx, [wall])  # e as mesmas penas (spec/ui 57)
 
 
 def edit_walls(doc: Document, walls, **changes) -> Transaction:

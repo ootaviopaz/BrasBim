@@ -21,13 +21,10 @@ from collections import Counter
 
 import ifcopenshell.util.element
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
-    QColorDialog,
     QComboBox,
-    QFontComboBox,
     QFormLayout,
     QFrame,
     QGridLayout,
@@ -345,6 +342,7 @@ class PropertiesPanel(QScrollArea):
         else:
             self._tool_options()
         if active is None and selection:
+            self._element_pens_field(selection)  # spec/ui 57
             self._layer_field(selection)
         if active is None and len(selection) == 1:
             self._solid_field(selection[0])
@@ -1401,6 +1399,8 @@ class PropertiesPanel(QScrollArea):
                              "acompanhando o modelo; sem ele o texto fica fixo")
         if texts:
             self._buttons(("Voltar à medida", lambda: edit(texts=None)))
+        if state.get("text_moves"):  # textos arrastados pela alça (spec/ui 57 §4)
+            self._buttons(("Textos de volta ao lugar", lambda: edit(text_moves=None)))
         self._section("Marcador")
         self._combo("Marcador", [("Traço a 45°", "tick"), ("Seta cheia", "arrow"),
                                  ("Seta aberta", "open_arrow"), ("Ponto", "dot"),
@@ -1426,14 +1426,9 @@ class PropertiesPanel(QScrollArea):
         has_text = any(annotation_base.build(doc, e).texts for e in elements)
         if has_text:
             self._section("Texto")
-            fonts = QFontComboBox()
-            fonts.setEditable(False)
-            current = common("font")
-            fonts.insertItem(0, "Padrão (da interface)")
-            fonts.setCurrentIndex(fonts.findText(current) if current else 0)
-            fonts.currentIndexChanged.connect(
-                lambda i: set_(font=None if i == 0 else fonts.itemText(i)))
-            self._add("Fonte", fonts)
+            from brasbim.ui.selection_options import font_combo
+
+            self._add("Fonte", font_combo(common("font"), lambda v: set_(font=v)))
             sizes = [("Do tipo", None)] + [(f"{fmt(v)} mm", v) for v in annotation_style.SIZES]
             size = common("size")
             if size is not None and size not in annotation_style.SIZES:
@@ -1445,17 +1440,43 @@ class PropertiesPanel(QScrollArea):
                         lambda v: set_(bold=v or None))
             self._combo("Itálico", YES_NO, bool(common("italic")),
                         lambda v: set_(italic=v or None))
-            self._color("Cor do texto", common("text_color"),
-                        lambda v: set_(text_color=v))
+            self._pen_field("Pena do texto", common("text_pen"), lambda v: set_(text_pen=v))
         self._section("Linha")
-        self._color("Cor da linha", common("line_color"), lambda v: set_(line_color=v))
-        weight = common("weight")
-        self._combo("Espessura", [("Da pena", None)] +
-                    [(f"{fmt(w)} mm", w) for w in drafting.LINE_WEIGHTS], weight,
-                    lambda v: set_(weight=v))
+        self._pen_field("Pena da linha", common("pen"), lambda v: set_(pen=v))
         if any((annotation_base.read_state(e).get("style") or {}) for e in elements):
             self._buttons(("Seguir a pena (tirar o estilo)", lambda: set_(
                 **dict.fromkeys(annotation_style.FIELDS))))
+
+    def _pen_field(self, label: str, current, commit) -> None:
+        """Número da pena da tabela, com a amostra da cor (spec/ui 57)."""
+        from brasbim.ui.selection_options import pen_combo
+
+        table = self.pens_table() if self.pens_table is not None else None
+        if table is None:
+            from brasbim.core import pens
+
+            table = pens.resolve(self.session.doc)
+        self._add(label, pen_combo(table, current, commit, label))
+
+    pens_table = None  # tabela da janela (posta pela janela principal)
+
+    def _element_pens_field(self, elements) -> None:
+        """Penas próprias de paredes, pilares, vigas, lajes, coberturas, esquadrias e
+        objetos (spec/ui 57): Contorno, Hachura, Vista; vazio = a da tabela."""
+        from brasbim.core import element_pens
+
+        doc = self.session.doc
+        elements = [display_layers.owner(e) for e in elements]
+        fields = element_pens.fields_of(doc, elements[0]) if elements else ()
+        if not fields or any(element_pens.fields_of(doc, e) != fields for e in elements):
+            return
+        self._section("Penas")
+        chosen = [element_pens.read(e) for e in elements]
+        for key in fields:
+            values = {c.get(key) for c in chosen}
+            self._pen_field(element_pens.LABELS[key], values.pop() if len(values) == 1
+                            else None, lambda v, k=key: self._run(
+                                lambda: element_pens.set_pens(doc, elements, **{k: v})))
 
     def _typed_size(self, combo, set_) -> None:
         text = combo.currentText().replace("mm", "").strip()
@@ -1465,31 +1486,6 @@ class PropertiesPanel(QScrollArea):
             return
         if combo.currentData() != value:
             set_(size=value)
-
-    def _color(self, label: str, value, commit) -> None:
-        """Botão com a cor (abre a escolha de cor) e "Da pena" para tirar."""
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        swatch = QPushButton(value or "Da pena")
-        if value:
-            ink = theme.FIELD if QColor(value).lightness() < 128 else theme.INK
-            swatch.setStyleSheet(f"background: {value}; color: {ink}")
-
-        def pick():
-            chosen = QColorDialog.getColor(QColor(value or theme.INK), self, label)
-            if chosen.isValid():
-                commit(chosen.name().upper())
-
-        swatch.clicked.connect(pick)
-        row.addWidget(swatch, 1)
-        if value:
-            back = QPushButton("Da pena")
-            back.setToolTip("Volta à cor da pena da categoria")
-            back.clicked.connect(lambda: commit(None))
-            row.addWidget(back)
-        holder = QWidget()
-        holder.setLayout(row)
-        self._add(label, holder)
 
     def _layer_field(self, selection) -> None:
         """Camada (spec/ui 18 §5) e situação (spec/ui 31 §2) de um ou vários elementos:

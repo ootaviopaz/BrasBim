@@ -60,6 +60,7 @@ class Settings:
     situation: str | None = None
     object_type: str | None = None  # tipo do objeto de onde veio
     length_params: tuple = ()  # parâmetros de tamanho do objeto (não passam a outro tipo)
+    pens: dict = field(default_factory=dict)  # penas próprias do elemento (spec/ui 57)
 
 
 def _storey_of(element) -> str | None:
@@ -85,6 +86,12 @@ def group_of(doc: Document, element) -> str | None:
         return "space"
     if base.kind_of(element) is not None:
         return f"annotation:{base.kind_of(element).prefix}"
+    try:
+        from brasbim.core.freeform import elements as freeform
+    except ImportError:  # ramo sem a forma livre
+        freeform = None
+    if freeform is not None and freeform.is_freeform(element):
+        return "freeform"  # só camada e situação passam (não tem tipo nem parâmetros)
     if objects.is_object(element):
         return "object"
     if sc.is_structure(element):
@@ -172,6 +179,9 @@ def pick(doc: Document, element) -> Settings:
     if group == "object":
         settings.object_type = values["type"]
         settings.length_params = _length_params(doc, values["type"])
+    from brasbim.core import element_pens
+
+    settings.pens = element_pens.read(element)
     return settings
 
 
@@ -241,6 +251,13 @@ def apply(doc: Document, settings: Settings, targets) -> object:
         group = group_of(doc, target)
         if group == settings.group and settings.values:
             builders.append(lambda t=target: _class_tx(doc, settings, t))
+        if group == settings.group:  # penas próprias, inclusive "da tabela" (spec/ui 57)
+            from brasbim.core import element_pens
+
+            fields = element_pens.GROUP_FIELDS.get(group, ())
+            if fields and element_pens.read(target) != settings.pens:
+                pens = {k: settings.pens.get(k) for k in fields}
+                builders.append(lambda t=target, p=pens: element_pens.set_pens(doc, [t], **p))
         if group and group.startswith("annotation:") \
                 and settings.group.startswith("annotation:") \
                 and annotation_style.styled(target):

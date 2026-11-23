@@ -33,7 +33,7 @@ from brasbim.core.annotations import spaces as space_data
 from brasbim.core.fillings import params
 from brasbim.core.structure import profiles, roofs, solids
 from brasbim.core.walls import types as wall_types
-from brasbim.ui import icons, theme
+from brasbim.ui import icons, selection_options, theme
 from brasbim.ui.docks import plain_title
 from brasbim.ui.tools import (
     AreaTool,
@@ -202,6 +202,9 @@ SECTIONS = [("Retangular", "rect"), ("Circular", "circle")]
 DIM_DIRECTIONS = [("aligned", "dimension", "Alinhada", "paralela aos dois primeiros pontos"),
                   ("horizontal", "ref_axis", "Horizontal", "mede só a distância em x"),
                   ("vertical", "ref_left", "Vertical", "mede só a distância em y")]
+TOOL_PEN_GROUPS = {"wall": "wall", "arc": "wall", "rectangle": "wall", "column": "column",
+                   "beam": "beam", "slab": "slab", "roof": "roof", "door": "door",
+                   "window": "window", "object": "object"}
 DASHES = [("Contínua", "solid"), ("Tracejada", "dashed"), ("Traço e ponto", "dashdot")]
 ALIGN_TEXT = [("Esquerda", "left"), ("Centro", "center"), ("Direita", "right")]
 HATCHES = [("Sólida", "solid"), ("Linhas", "lines"), ("Cruzada", "cross")]
@@ -606,6 +609,9 @@ class OptionsBar(QToolBar):
     def show_for(self, tool) -> None:
         self.tool = tool
         self._clear()
+        if tool.name == "select":  # características da seleção (spec/ui 56)
+            self._selection()
+            return
         if isinstance(tool, StairTool):
             o = tool.options
             self._combo([("Reta", "straight"), ("Em L", "L"), ("Em U", "U")], o.shape,
@@ -717,14 +723,18 @@ class OptionsBar(QToolBar):
                            (True, "circle2d", "Diâmetro", "Ø 2,40")],
                           tool.options.diameter,
                           lambda v: setattr(tool.options, "diameter", v))
+            selection_options.tool_style(self, tool)
         elif isinstance(tool, LabelTool):
             self._label("Mostra")
             self._combo([("Tipo do elemento", "type"), ("Nome do elemento", "name"),
                          ("Código", "code"), ("Texto digitado", "free")], tool.options.field,
                         lambda v: setattr(tool.options, "field", v),
                         "O que o rótulo mostra quando a seta está sobre um elemento")
+            selection_options.tool_style(self, tool)
         elif isinstance(tool, _ClickTool):
             self._line(tool)
+            # cota de ângulo tem texto; círculo e arco, só linha (spec/ui 55 §2.3)
+            selection_options.tool_style(self, tool, text=tool.prefix == "angle_dim")
         elif isinstance(tool, RevisionTool):
             self._choices(SLAB_MODES, tool.options.mode,
                           lambda v: setattr(tool.options, "mode", v))
@@ -741,18 +751,27 @@ class OptionsBar(QToolBar):
             note.editingFinished.connect(lambda: setattr(tool.options, "note",
                                                          note.text().strip()))
             self.addWidget(note)
+            selection_options.tool_style(self, tool)
         elif isinstance(tool, SpaceTool):
             self._space(tool)
         elif isinstance(tool, HatchTool):
             self._hatch(tool)
         elif isinstance(tool, LineTool):
             self._line(tool)
+            if not isinstance(tool, (RailingTool, TerrainTool)):
+                selection_options.tool_style(self, tool, text=False)
         elif isinstance(tool, TextTool):
             self._text(tool)
+            selection_options.tool_style(self, tool, line=False, size=False)
         elif isinstance(tool, DimensionTool):
             self._choices(DIM_DIRECTIONS, tool.direction,
                           lambda v: setattr(tool, "direction", v))
-        elif isinstance(tool, (NorthTool, ViewTool, LevelTool)):
+            self.addSeparator()
+            selection_options.dimension_tool_widgets(self, tool)
+            selection_options.tool_style(self, tool)
+        elif isinstance(tool, (NorthTool, LevelTool)):
+            selection_options.tool_style(self, tool)  # estilo do símbolo e do texto
+        elif isinstance(tool, ViewTool):
             pass  # só a camada
         elif isinstance(tool, BeamTool):
             self._beam(tool)
@@ -776,6 +795,9 @@ class OptionsBar(QToolBar):
         else:
             self.hide()
             return
+        group = TOOL_PEN_GROUPS.get(tool.name)  # penas das próximas criações (spec/ui 57)
+        if group is not None:
+            selection_options.tool_pens(self, self.window_, group)
         self._layer(tool)
         self._situation(tool)
         if not self.actions():
@@ -815,8 +837,23 @@ class OptionsBar(QToolBar):
                              lambda i: self.set_new_situation(intervention.CODES[i])))
 
     def refresh(self) -> None:
-        if self.tool is not None and self.isVisible():
+        if self.tool is not None and (self.isVisible() or self.tool.name == "select"):
             self.show_for(self.tool)
+
+    def _selection(self) -> None:
+        """Ferramenta Selecionar: as características dos elementos selecionados, editáveis
+        (spec/ui 56); sem seleção, a barra some."""
+        session = self.window_.session
+        elements = [session.doc.find(g) for g in sorted(session.selection)]
+        elements = [e for e in elements if e is not None]
+        if not elements or not selection_options.build(self, self.window_, elements):
+            # A barra fica (não some e volta a cada clique, o que desloca a vista):
+            # sem seleção, uma dica; o que não cabe nela está no painel Propriedades.
+            self._clear()
+            self._label("Selecione um elemento para ver e mudar as características dele"
+                        if not elements else "Características no painel Propriedades")
+        if self.wanted:
+            self.show()
 
     # --- peças -----------------------------------------------------------------------
 

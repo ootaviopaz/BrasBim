@@ -80,7 +80,7 @@ def test_ls07_substituir_pela_janela(window):
     texts = sorted(base.read_state(e)["text"] for e in s.doc.ifc.by_type("IfcAnnotation"))
     assert texts == ["SALA", "sala 2"]
     dialog.what.setCurrentIndex(dialog.what.findData("style"))
-    dialog.style_text_color.setText("#c0392b")
+    dialog.style_text_pen.setCurrentIndex(dialog.style_text_pen.findData(9))
     dialog.replace()
-    assert all(base.read_state(e)["style"] == {"text_color": "#C0392B"}
+    assert all(base.read_state(e)["style"] == {"text_pen": 9}
                for e in s.doc.ifc.by_type("IfcAnnotation"))

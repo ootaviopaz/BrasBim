@@ -21,7 +21,7 @@ from pathlib import Path
 
 import ifcopenshell
 
-from brasbim.core import display_layers, intervention, units
+from brasbim.core import display_layers, element_pens, intervention, units
 from brasbim.core.collab import Client, Server, protocol
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import commands as fc
@@ -319,6 +319,8 @@ class Session:
                 return False
             # Situação dos novos elementos (opção da ferramenta, spec/ui 31 §2).
             tx = intervention.stamp_created(self.doc, tx, self.new_situation)
+            # Penas das próximas criações (barra Opções da ferramenta, spec/ui 57).
+            tx = element_pens.stamp_created(self.doc, tx, self.new_pens)
             self._check_layers(tx)
             self.history.commit(tx)
         except OpError as e:
@@ -384,6 +386,14 @@ class Session:
     # --- situação (spec/ui 31) -----------------------------------------------------------
 
     new_situation = intervention.DEFAULT  # opção "Situação dos novos elementos" (§2)
+
+    @property
+    def new_pens(self) -> dict:
+        """Grupo → penas das próximas criações (spec/ui 57); da sessão, não do arquivo."""
+        found = self.__dict__.get("_new_pens")
+        if found is None:
+            found = self.__dict__["_new_pens"] = {}
+        return found
 
     @property
     def situation_view(self) -> str:
