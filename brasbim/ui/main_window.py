@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QProgressDialog,
     QSplitter,
     QTabBar,
     QTabWidget,
@@ -2932,10 +2933,36 @@ class MainWindow(QMainWindow):
             self.import_drawing(path)
             return
         if path and self._ask_save():
-            try:
-                self.session.open(path)
-            except (OSError, RuntimeError, OpError) as e:
-                self.session.message(f"não foi possível abrir {path}: {e}", "recusa")
+            self.open_path(path)
+
+    def open_path(self, path: str) -> bool:
+        """Abre o projeto; um IFC 2x3 ou 4 é convertido para o 4.3 com uma janela de
+        andamento (spec/ui 60)."""
+        dialog = None
+
+        def progress(done: int, total: int) -> None:
+            nonlocal dialog
+            if dialog is None:
+                dialog = QProgressDialog("Convertendo o arquivo para o IFC 4.3…", "", 0,
+                                         100, self)
+                dialog.setWindowTitle("Abrir")
+                dialog.setCancelButton(None)
+                dialog.setMinimumDuration(0)
+                dialog.setWindowModality(Qt.WindowModal)
+            dialog.setValue(int(100 * done / max(total, 1)))
+            QApplication.processEvents()
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            self.session.open(path, progress)
+            return True
+        except (OSError, RuntimeError, OpError, NotImplementedError) as e:
+            self.session.message(f"não foi possível abrir {path}: {e}", "recusa")
+            return False
+        finally:
+            QApplication.restoreOverrideCursor()
+            if dialog is not None:
+                dialog.close()
 
     # --- importar desenho (spec/ui 22) ---------------------------------------------------
 

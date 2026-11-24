@@ -1857,10 +1857,20 @@ def _first_type(session: Session, ifc_class: str) -> str | None:
     types = sorted(session.doc.ifc.by_type(ifc_class), key=lambda t: t.Name or "")
     if ifc_class == "IfcSlabType":  # os de cobertura ficam com a ferramenta Cobertura
         types = [t for t in types if t.PredefinedType != "ROOF"]
+    if ifc_class in ("IfcColumnType", "IfcBeamType"):  # tipos de outro programa (IFC
+        types = [t for t in types if _has_section(t)]   # aberto) não têm a seção daqui
     preferred = {"IfcColumnType": "Pilar 20×40", "IfcBeamType": "Viga 14×40",
                  "IfcSlabType": "Laje maciça 10 cm"}.get(ifc_class)
     found = next((t for t in types if t.Name == preferred), types[0] if types else None)
     return found.GlobalId if found is not None else None
+
+
+def _has_section(element_type) -> bool:
+    try:
+        st_types.section(element_type)
+    except (OpError, AttributeError, KeyError, TypeError, ValueError):
+        return False
+    return True
 
 
 def _base_section(session: Session, ifc_class: str) -> dict:

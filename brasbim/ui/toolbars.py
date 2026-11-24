@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 from brasbim.core import display_layers, intervention, profile_defs, type_variants, units
 from brasbim.core.annotations import drafting
 from brasbim.core.annotations import spaces as space_data
+from brasbim.core.document import OpError
 from brasbim.core.fillings import params
 from brasbim.core.structure import profiles, roofs, solids
 from brasbim.core.walls import types as wall_types
@@ -846,7 +847,11 @@ class OptionsBar(QToolBar):
         session = self.window_.session
         elements = [session.doc.find(g) for g in sorted(session.selection)]
         elements = [e for e in elements if e is not None]
-        if not elements or not selection_options.build(self, self.window_, elements):
+        try:
+            shown = bool(elements) and selection_options.build(self, self.window_, elements)
+        except OpError:  # elemento de outro programa (IFC aberto), sem os dados do BrasBim
+            shown = False
+        if not shown:
             # A barra fica (não some e volta a cada clique, o que desloca a vista):
             # sem seleção, uma dica; o que não cabe nela está no painel Propriedades.
             self._clear()

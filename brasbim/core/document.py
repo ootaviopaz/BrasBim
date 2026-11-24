@@ -16,9 +16,19 @@ class OpError(ValueError):
     """Operação inválida ou impossível no estado atual do modelo."""
 
 
+def of_type(ifc: ifcopenshell.file, name: str) -> list:
+    """``by_type`` que devolve lista vazia quando a classe não existe no esquema do arquivo
+    (um IFC2X3 aberto não tem, por exemplo, ``IfcGeographicElement``)."""
+    try:
+        return ifc.by_type(name)
+    except RuntimeError:
+        return []
+
+
 class Document:
     def __init__(self, ifc: ifcopenshell.file):
         self.ifc = ifc
+        self.converted_from: str | None = None  # esquema do arquivo aberto, se convertido
         self._body = self._axis = self._profile = self._plan_body = None
         # GlobalIds recalculados durante a transação em curso (ver ``ops.history.run``).
         self.changed: set[str] = set()
@@ -90,8 +100,17 @@ class Document:
         return doc
 
     @classmethod
-    def open(cls, path: str) -> Document:
-        return cls(ifcopenshell.open(path))
+    def open(cls, path: str, progress=None) -> Document:
+        """Abre o arquivo; IFC 2x3 e IFC 4 são convertidos para o 4.3 e ``converted_from``
+        guarda o esquema de origem (spec/ui 60)."""
+        from brasbim.core import ifc_upgrade
+
+        ifc = ifcopenshell.open(path)
+        source = ifc.schema
+        converted = ifc_upgrade.needs_upgrade(ifc)
+        doc = cls(ifc_upgrade.upgrade(ifc, progress) if converted else ifc)
+        doc.converted_from = source if converted else None
+        return doc
 
     def save(self, path: str) -> None:
         self.ifc.write(path)

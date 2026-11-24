@@ -124,6 +124,12 @@ Aberta em 2026‑11‑12. Tudo o que for feito a partir desta data entra aqui.
 - Material **Couro** na biblioteca de cores.
 
 ### Correções
+- **Abrir IFC 2x3 ou IFC 4** dava erro na planta (e o erro se repetia sem parar). Agora o
+  arquivo é convertido para o IFC 4.3 ao abrir, com uma janela de andamento nos arquivos
+  grandes; um aviso diz de que esquema veio, e Salvar pede um nome novo para não gravar
+  por cima do original (para entregar em 2x3 ou 4, use Exportar IFC). As etiquetas de
+  vigas de outros programas, com contorno que não é um retângulo, e a seleção
+  de uma parede de outro programa (barra Opções) também davam erro. (spec/ui 60)
 - No Windows, apertar e soltar o **Alt** sobre a planta ou o 3D (para o conta‑gotas)
   levava o foco ao menu Arquivo, e a vista parava de receber as teclas até um novo Alt.
 - No 3D, as paredes com camadas mostravam linhas falsas, dos cantos das portas e janelas

@@ -1046,6 +1046,22 @@ def _section_text(element_type) -> str:
     return profiles.label(section).replace(" × ", "×").replace("Ø ", "Ø")
 
 
+def _beam_strip(ring) -> list | None:
+    """Retângulo mínimo em volta de um contorno de viga que não tem 4 vértices (IFC de
+    outro programa), na ordem a→b pelo lado comprido, como a faixa das vigas do BrasBim."""
+    from shapely.geometry import MultiPoint, Polygon
+
+    if len(ring) < 3:
+        return None
+    box = MultiPoint([tuple(p[:2]) for p in ring]).minimum_rotated_rectangle
+    if not isinstance(box, Polygon):
+        return None
+    pts = list(box.exterior.coords)[:4]
+    if math.dist(pts[0], pts[1]) < math.dist(pts[1], pts[2]):
+        pts = pts[1:] + pts[:1]
+    return pts
+
+
 def structure_labels(found: list[_Element]) -> list[Label]:
     """Etiquetas de pilar ("P1" e, abaixo, "20×40", junto ao canto de cima à direita) e de
     viga ("V1 14×40" no meio dela, girada com ela, de leitura da esquerda para a direita
@@ -1061,7 +1077,12 @@ def structure_labels(found: list[_Element]) -> list[Label]:
             out.append(Label(element.GlobalId, (max(xs) + LABEL_OFFSET, max(ys) + LABEL_OFFSET),
                              element.Name, size, "structure"))
             continue
-        a, b, c, d = e.ring  # faixa: direita (a→b) e esquerda (d→c)
+        ring = e.ring
+        if len(ring) != 4:  # viga importada com contorno qualquer: o retângulo que a envolve
+            ring = _beam_strip(ring)
+            if ring is None:
+                continue
+        a, b, c, d = ring  # faixa: direita (a→b) e esquerda (d→c)
         dx, dy = b[0] - a[0], b[1] - a[1]
         angle = math.degrees(math.atan2(dy, dx))
         if angle > 90.0 + 1e-9 or angle <= -90.0 + 1e-9:  # sempre legível

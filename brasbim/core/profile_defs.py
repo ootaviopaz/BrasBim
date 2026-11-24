@@ -37,7 +37,7 @@ from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
 from brasbim.core import guid
-from brasbim.core.document import Document, OpError
+from brasbim.core.document import Document, OpError, of_type
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
 from brasbim.core.ops.history import Transaction
 
@@ -293,7 +293,7 @@ def _pset_values(entity) -> dict:
 
 def all_defs(doc: Document) -> list:
     """Conjuntos que são perfis do projeto, por nome."""
-    found = [s for s in doc.ifc.by_type("IfcMaterialProfileSet")
+    found = [s for s in of_type(doc.ifc, "IfcMaterialProfileSet")
              if _pset_values(s).get("Identificador")]
     return sorted(found, key=lambda s: (s.Name or "").lower())
 

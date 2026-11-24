@@ -226,12 +226,19 @@ class Session:
         self.history.journal = list(history.journal)
         self._write_journal()
 
-    def open(self, path: str) -> None:
-        doc = Document.open(path)
+    def open(self, path: str, progress=None) -> None:
+        doc = Document.open(path, progress)
         self.leave()
         doc.display = display_layers.read_display(doc)  # spec/ui 18 §5.1
-        self._attach(doc, path)
+        # convertido (spec/ui 60): Salvar pede um nome, para não gravar 4.3 por cima do
+        # arquivo de origem
+        self._attach(doc, None if doc.converted_from else path, modified=bool(
+            doc.converted_from))
         self.message(f"Aberto: {path}")
+        if doc.converted_from:
+            self.message(f"O arquivo estava em {doc.converted_from} e foi convertido para o "
+                         "IFC 4.3. Ao salvar, escolha um nome: o original não é alterado "
+                         "(para entregar em 2x3 ou 4, use Exportar IFC).", "aviso")
         organize = display_layers.organize(doc)  # arquivo sem camadas (§3.1, CM12)
         if organize is not None:
             self.history.commit(organize)

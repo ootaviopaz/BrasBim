@@ -30,6 +30,15 @@ spec/ui 55 e 58).*
 > `dimension_levels` do Assistente, testes CN01–CN08. **Adiados pelo revisor ("para um próximo momento"):** forma livre (escultura e
 > corte/fachada) e rodar no navegador (opções levantadas: transmitir com Xpra/noVNC,
 > visualizador web do IFC, versão web).
+> **Abrir IFC2X3 (2026‑11‑24, relato do revisor):** um IFC2X3 de outro programa quebrava a
+> planta. Agora `Document.open` converte 2x3/4 para 4.3 (`core/ifc_upgrade.py`,
+> `doc.converted_from`), `MainWindow.open_path` mostra o andamento, a sessão fica sem nome
+> (Salvar pede nome), `document.of_type` protege `by_type` de classes fora do esquema, a
+> etiqueta de viga aceita contorno qualquer (`plan._beam_strip`) e as ferramentas Pilar e
+> Viga pulam tipos sem seção do BrasBim, e a barra Opções não quebra ao selecionar parede
+> de outro programa. Spec/ui 60, testes AO01–AO05. O arquivo real do
+> revisor (≈1 milhão de entidades) leva ~2,5 min para converter: medir e, se preciso,
+> otimizar.
 
 *Antes: 2026‑11‑23 (spec/ui 55–57 e 16 §4.4: estilo das cotas e textos, Localizar
 e substituir, conta‑gotas, cópia com Ctrl, barra Opções com a seleção, penas por

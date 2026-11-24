@@ -35,7 +35,7 @@ import ifcopenshell.util.placement
 import numpy as np
 
 from brasbim.core import clip, guid, props
-from brasbim.core.document import Document, OpError
+from brasbim.core.document import Document, OpError, of_type
 from brasbim.core.ops.base import Op, register_derive, register_inverse_pair
 
 log = logging.getLogger(__name__)
@@ -58,7 +58,7 @@ def is_solid_rel(rel) -> bool:
 
 
 def _rels(doc: Document) -> list:
-    return [r for r in doc.ifc.by_type("IfcRelInterferesElements") if is_solid_rel(r)]
+    return [r for r in of_type(doc.ifc, "IfcRelInterferesElements") if is_solid_rel(r)]
 
 
 def cut_by(element) -> list:
