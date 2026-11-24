@@ -236,44 +236,52 @@ def _class_tx(doc: Document, settings: Settings, target):
     return None
 
 
-def apply(doc: Document, settings: Settings, targets) -> object:
-    """Transação "Aplicar ajustes" nos ``targets`` (Ctrl+Alt+clique ou a mini‑barra)."""
+def apply(doc: Document, settings: Settings, targets, by_group: dict | None = None) -> object:
+    """Transação "Aplicar ajustes" nos ``targets`` (Ctrl+Alt+clique ou a mini‑barra).
+
+    ``by_group`` guarda os últimos ajustes pegos de cada grupo (como os ajustes de cada
+    ferramenta): o alvo recebe os do grupo dele, se houver; senão, ``settings`` (os últimos
+    pegos), dos quais só passam camada, situação e o que é comum às classes."""
     from brasbim.core.annotations import style as annotation_style
     from brasbim.core.ops.history import combine
 
+    by_group = by_group or {}
     targets = [display_layers.owner(t) for t in targets]
-    targets = [t for t in {t.GlobalId: t for t in targets}.values()
-               if t.GlobalId != settings.source]
-    if not targets:
+    chosen = []
+    for target in {t.GlobalId: t for t in targets}.values():
+        source = by_group.get(group_of(doc, target), settings)
+        if target.GlobalId != source.source:
+            chosen.append((target, source))
+    if not chosen:
         raise OpError("nada para receber os ajustes")
     builders = []
-    for target in targets:
+    for target, src in chosen:
         group = group_of(doc, target)
-        if group == settings.group and settings.values:
-            builders.append(lambda t=target: _class_tx(doc, settings, t))
-        if group == settings.group:  # penas próprias, inclusive "da tabela" (spec/ui 57)
+        if group == src.group and src.values:
+            builders.append(lambda t=target, s=src: _class_tx(doc, s, t))
+        if group == src.group:  # penas próprias, inclusive "da tabela" (spec/ui 57)
             from brasbim.core import element_pens
 
             fields = element_pens.GROUP_FIELDS.get(group, ())
-            if fields and element_pens.read(target) != settings.pens:
-                pens = {k: settings.pens.get(k) for k in fields}
+            if fields and element_pens.read(target) != src.pens:
+                pens = {k: src.pens.get(k) for k in fields}
                 builders.append(lambda t=target, p=pens: element_pens.set_pens(doc, [t], **p))
         if group and group.startswith("annotation:") \
-                and settings.group.startswith("annotation:") \
+                and src.group.startswith("annotation:") \
                 and annotation_style.styled(target):
-            style = settings.style or {}
+            style = src.style or {}
             reset = {k: style.get(k) for k in annotation_style.FIELDS}
             builders.append(lambda t=target, r=reset: annotation_style.edit_style(doc, [t], **r))
         if display_layers.layerable(target) and \
-                display_layers.layer_of(doc, target) != settings.layer and \
+                display_layers.layer_of(doc, target) != src.layer and \
                 display_layers.read_config(doc) is not None:
-            builders.append(lambda t=target: display_layers.assign(doc, [t.GlobalId],
-                                                                   settings.layer))
-        if settings.situation is not None and intervention.situable(target) and \
-                intervention.situation_of(doc, target) != settings.situation:
-            builders.append(lambda t=target: intervention.set_situation(
-                doc, [t.GlobalId], settings.situation))
-    label = "Aplicar ajustes" if len(targets) == 1 else f"Aplicar ajustes em {len(targets)}"
+            builders.append(lambda t=target, s=src: display_layers.assign(doc, [t.GlobalId],
+                                                                      s.layer))
+        if src.situation is not None and intervention.situable(target) and \
+                intervention.situation_of(doc, target) != src.situation:
+            builders.append(lambda t=target, s=src: intervention.set_situation(
+                doc, [t.GlobalId], s.situation))
+    label = "Aplicar ajustes" if len(chosen) == 1 else f"Aplicar ajustes em {len(chosen)}"
     if not builders:
         from brasbim.core.ops import Transaction
 
@@ -286,14 +294,18 @@ def apply(doc: Document, settings: Settings, targets) -> object:
 # grupo → {atributo das opções da ferramenta: campo dos ajustes}
 TOOL_FIELDS = {
     "wall": {"type": "type", "ref_line": "ref_line", "fixed_height": "fixed_height"},
-    "column": {"type": "type", "top_offset": "top_offset"},
-    "beam": {"type": "type", "ref_line": "ref_line", "top_offset": "top_offset"},
+    "column": {"angle": "angle", "base_offset": "base_offset", "top_offset": "top_offset",
+               "fixed_height": "fixed_height"},
+    "beam": {"ref_line": "ref_line", "top_offset": "top_offset",
+             "top_elevation": "top_elevation"},
     "slab": {"type": "type", "top_offset": "top_offset"},
     "roof": {"type": "type", "slope": "slope", "overhang": "overhang",
              "base_height": "base_height"},
     "space": {"name": "name", "height": "height"},
-    "door": {"type": "type"},
-    "window": {"type": "type"},
+    "door": {"type": "type", "width": "width", "height": "height", "base": "base",
+             "align": "align", "offset": "offset"},
+    "window": {"type": "type", "width": "width", "height": "height", "base": "base",
+               "align": "align", "offset": "offset"},
     "annotation:text": {"size": "size", "align": "align"},
     "annotation:line2d": {"weight": "weight", "dash": "dash"},
     "annotation:circle2d": {"weight": "weight", "dash": "dash"},
@@ -302,6 +314,19 @@ TOOL_FIELDS = {
     "annotation:hatch": {"pattern": "pattern", "color": "color", "angle": "angle",
                          "spacing": "spacing"},
 }
+# Grupo → ferramentas que criam elementos dele (os ajustes pegos viram os delas, §4.1).
+GROUP_TOOLS = {
+    "wall": ("wall", "arc", "rectangle"), "column": ("column",), "beam": ("beam",),
+    "slab": ("slab",), "roof": ("roof",), "space": ("space",), "door": ("door",),
+    "window": ("window",),
+}
+
+
+def tools_for(group: str) -> tuple:
+    """Ferramentas que recebem os ajustes pegos de um elemento do ``group``."""
+    if group.startswith("annotation:"):
+        return (group.split(":", 1)[1],)  # a ferramenta tem o nome do tipo de anotação
+    return GROUP_TOOLS.get(group, ())
 
 
 def tool_changes(settings: Settings) -> dict:
@@ -310,7 +335,7 @@ def tool_changes(settings: Settings) -> dict:
     for attr, key in TOOL_FIELDS.get(settings.group, {}).items():
         if key in settings.values:
             out[attr] = copy.deepcopy(settings.values[key])
-    if settings.group == "wall":
+    if settings.group in ("wall", "column", "beam"):
         mode = settings.values.get("top_mode")
         if mode in ("storey", "fixed"):
             out["top"] = mode

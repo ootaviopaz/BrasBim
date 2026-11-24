@@ -228,6 +228,7 @@ class View3D(QOpenGLWidget, ToolInput):
     tool_options_changed = Signal()
     tool_requested = Signal(str)  # Enter repete a última ferramenta (spec/ui 23 §3.2)
     context_requested = Signal(object, object)  # (GlobalId ou None, posição global)
+    settings_clicked = Signal(str, bool)  # conta-gotas: (GlobalId, aplicar) (spec/ui 55)
 
     def __init__(self, scene: Scene, toolbox: ToolBox, parent=None):
         super().__init__(parent)
@@ -380,6 +381,9 @@ class View3D(QOpenGLWidget, ToolInput):
     def ray(self, pos: QPointF):
         return self.camera.ray(pos.x(), pos.y(), self.width(), self.height())
 
+    def element_at(self, pos) -> str | None:
+        return self.pick(pos)
+
     def pick(self, pos: QPointF) -> str | None:
         hit = self.scene.pick(*self.ray(pos))
         return hit[0] if hit else None
@@ -434,6 +438,8 @@ class View3D(QOpenGLWidget, ToolInput):
             self.fit()
         selected = self.selection
         hover = self.ctx.hover if self.ctx.hover not in selected else None
+        if self.settings_target is not None:  # sob o conta-gotas (spec/ui 55 §4.1)
+            hover = self.settings_target
         from brasbim.ui.solid_badge import partner_ids
 
         draw_scene(self.scene, self.camera, self.width() / max(self.height(), 1), selected,
@@ -726,6 +732,8 @@ class View3D(QOpenGLWidget, ToolInput):
             self._orient_key = self.orientation_at(event.position())
             self._press = ("orient", event.position())
             return
+        if button == Qt.LeftButton and self.settings_click(event.position(), self._mods(event)):
+            return  # Alt+clique pega os ajustes; Ctrl+Alt+clique aplica (spec/ui 55 §4.1)
         kind = self.handle_at(event.position()) if button == Qt.LeftButton else None
         if kind is not None:
             self._start_handle(kind)
@@ -761,6 +769,7 @@ class View3D(QOpenGLWidget, ToolInput):
             if press is None and self.on_orientation(pos):
                 return  # a ferramenta não segue o cursor sobre o controle
             self._feed_move(pos, self._mods(event))
+            self.settings_cursor(event.modifiers())
             return
         kind, last = self._drag
         delta = pos - last
@@ -910,6 +919,12 @@ class View3D(QOpenGLWidget, ToolInput):
                 QToolTip.hideText()
             return True
         return super().event(event)
+
+    def leaveEvent(self, event):
+        if self.settings_target is not None:  # o realce do conta-gotas sai junto
+            self.settings_target = None
+            self.update()
+        super().leaveEvent(event)
 
     def keyPressEvent(self, event):
         if self.tool_key(event) or self.forward_text(event):

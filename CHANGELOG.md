@@ -93,14 +93,30 @@ Aberta em 2026‑11‑12. Tudo o que for feito a partir desta data entra aqui.
   cada parede reta do pavimento (ou só das que você indicar): pontas e bordas das portas
   e janelas, na face externa, acompanhando quando a parede muda. Pula as curvas e as que
   já têm cota; tudo num Desfazer. (spec/ui 16 §4.4)
+- **Atalhos de teclado configuráveis.** Menu novo **Preferências > Atalhos de teclado**:
+  qualquer item dos menus e qualquer ferramenta pode ter o atalho que você quiser. Busca
+  por nome ou pelo atalho, aviso quando o atalho já era de outro comando (ele passa para
+  o novo), Voltar ao padrão e Restaurar todos. Os atalhos ficam nas suas preferências,
+  não no projeto. (spec/ui 58)
 
 ### Melhorias
+- **Conta‑gotas mais parecido com o uso comum em BIM.** Os ajustes pegos com Alt+clique
+  passam a valer para a ferramenta daquele elemento mesmo com Selecionar ativa (os
+  próximos saem iguais), inclusive Porta, Janela, Pilar e Viga (com a seção) e o estilo
+  das anotações. Cada classe guarda os últimos ajustes pegos: Ctrl+Alt+clique numa parede
+  aplica os da parede, mesmo que depois você tenha pegado de uma cota. Com Alt ou
+  Ctrl+Alt apertado, o elemento sob o cursor fica realçado; Ctrl+Alt+clique num elemento
+  selecionado aplica em toda a seleção; e o conta‑gotas funciona também no 3D. (spec/ui 55)
 - Ao fim de um pedido ao Assistente, os objetos (mobiliário, louças, eletrodomésticos)
   que ele criou ou mudou também ficam selecionados, como já acontecia com paredes e
   esquadrias.
 - A prévia que o Assistente usa para conferir um objeto passou a respeitar a
   profundidade: peças de trás não aparecem mais por cima das da frente.
 - Material **Couro** na biblioteca de cores.
+
+### Correções
+- No Windows, apertar e soltar o **Alt** sobre a planta ou o 3D (para o conta‑gotas)
+  levava o foco ao menu Arquivo, e a vista parava de receber as teclas até um novo Alt.
 
 ## [0.0.1] — 2026‑11‑07
 

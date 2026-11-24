@@ -4,7 +4,24 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑23 (spec/ui 55–57 e 16 §4.4: estilo das cotas e textos, Localizar
+*Atualizado em 2026‑11‑24 (conta‑gotas revisto e atalhos de teclado configuráveis,
+spec/ui 55 e 58).*
+
+> **2026‑11‑24 (mesmo ramo `estilo-localizar-contagotas`):** (1) **Conta‑gotas revisto**
+> ("não tem funcionado bem"), comparado com a ajuda pública do Archicad: pegar leva os
+> ajustes às ferramentas da classe mesmo com Selecionar ativa (porta/janela, pilar/viga com
+> a seção, estilo das anotações); últimos ajustes por classe (`ctx.picked_by_group`,
+> `apply(..., by_group)`); Ctrl+Alt+clique num selecionado aplica na seleção toda; realce
+> do elemento sob o conta‑gotas; Alt+clique no 3D; **corrigido** o Alt sozinho que, no
+> Windows, levava o foco ao menu Arquivo (`ToolInput.settings_key`). Spec/ui 55 §7a.
+> (2) **Atalhos de teclado** (spec/ui 58, `ui/shortcuts.py`): menu novo **Preferências >
+> Atalhos de teclado**, para todos os itens dos menus e todas as ferramentas (ações
+> próprias, `window.tool_shortcut_actions`); só as diferenças do padrão em `QSettings`
+> (`atalhos/teclado`). Pontos (a)–(d) da spec/ui 58 §6 esperam o revisor. Testes AJ07–AJ10,
+> AT01–AT07. **Testar no Windows de verdade:** Alt sozinho sobre a planta não abre mais
+> o menu; realce e cursor do conta‑gotas.
+
+*Antes: 2026‑11‑23 (spec/ui 55–57 e 16 §4.4: estilo das cotas e textos, Localizar
 e substituir, conta‑gotas, cópia com Ctrl, barra Opções com a seleção, penas por
 elemento, texto da cota móvel, cotas pelo Assistente).*
 

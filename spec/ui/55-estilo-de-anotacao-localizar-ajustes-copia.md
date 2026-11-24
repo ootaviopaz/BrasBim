@@ -232,6 +232,29 @@ até Esc. Os demais pontos ficam como propostos.
   segue com o ponto de base (`Tool.handoff`/`take`); cursor com + (`Qt.DragCopyCursor`);
   Ctrl+D no menu Copiar. Testes CA01–CA04.
 
+**Revisão do conta‑gotas (2026‑11‑24, pedido do revisor: "não tem funcionado bem"):**
+comparado com a ajuda pública do Archicad (Parameter Transfer, §8), em que os ajustes pegos
+viram os ajustes padrão da ferramenta do elemento e a seringa leva ao alvo os ajustes da
+classe dele, com o elemento sob o cursor realçado:
+- Pegar leva os ajustes a **todas as ferramentas que criam aquela classe**, esteja ou não
+  uma delas ativa (`pick_settings.tools_for`; `main_window.load_tool_settings`), inclusive
+  Porta e Janela (tipo, vão, peitoril, alinhamento), Pilar e Viga (seção do tipo, ângulo,
+  topo) e o estilo das anotações (`Tool.style`). A ferramenta ativa não troca.
+- **Ajustes por classe**: a janela guarda os últimos pegos de cada grupo
+  (`ctx.picked_by_group`); `apply(..., by_group)` dá a cada alvo os da classe dele e, sem
+  eles, os últimos pegos (só camada, situação e o comum).
+- **Ctrl+Alt+clique num elemento da seleção** aplica em todos os selecionados (uma
+  transação).
+- **Realce**: com Alt ou Ctrl+Alt e a ferramenta parada, o elemento sob o cursor fica
+  realçado (`ToolInput.settings_target`), na planta e no 3D.
+- **3D**: Alt+clique e Ctrl+Alt+clique também na vista 3D (`View3D.settings_clicked`).
+- **Correção**: no Windows, Alt sozinho (apertar e soltar) levava o foco ao menu Arquivo;
+  a vista agora fica com o Alt (`ToolInput.settings_key`).
+- Testes AJ07–AJ08 (núcleo) e AJ07–AJ10 (interface).
+- Fontes novas: https://help.graphisoft.com/AC/19/INT/AC19Help/02_Interaction/02_Interaction-118.htm ·
+  https://help.graphisoft.com/MEP/30/INT/Topics/030_Interaction/030_Interaction-98.html
+  (comportamento de uso, sem cópia de textos ou diálogos).
+
 **Estilo na barra Opções (2026‑11‑23, 2ª rodada):** feito para as ferramentas de anotação
 e para a seleção (spec/ui 56 §3). **Fica para depois:** o conta‑gotas levando o estilo
 para a ferramenta de anotação; conta‑gotas e cópia com Ctrl na vista 3D;

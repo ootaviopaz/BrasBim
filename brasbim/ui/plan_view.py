@@ -824,11 +824,17 @@ class PlanView(QWidget, ToolInput, FrameHistory):
                     painter.drawLine(QPointF(x, y + height + 1), QPointF(x + width, y + height + 1))
                 painter.restore()
 
+    def element_at(self, pos) -> str | None:
+        return self.ctx.plan.pick(self.to_world(pos), self.ctx.tol)
+
     def _draw_hover(self, painter: QPainter) -> None:
-        """Destaque do elemento sob o cursor, antes do clique (spec/ui 28 §2)."""
-        owner = self.ctx.hover
-        if owner is None or owner in self.ctx.session.selection                 or self.toolbox.active.name != "select":
-            return
+        """Destaque do elemento sob o cursor, antes do clique (spec/ui 28 §2), e do que
+        está sob o conta-gotas (spec/ui 55 §4.1)."""
+        owner = self.settings_target
+        if owner is None:
+            owner = self.ctx.hover
+            if owner is None or owner in self.ctx.session.selection                     or self.toolbox.active.name != "select":
+                return
         color = QColor(C["select"])
         color.setAlpha(140)
         painter.setPen(QPen(color, 2.5 * self.unit))
@@ -892,6 +898,9 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             painter.restore()
 
     def leaveEvent(self, event):
+        if self.settings_target is not None:
+            self.settings_target = None
+            self.update()
         if self.ctx.hover is not None:
             self.ctx.hover = None
             self.update()
@@ -1035,7 +1044,7 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             self.context_requested.emit(gid, event.globalPosition().toPoint())
             return
         button = {Qt.LeftButton: "left", Qt.RightButton: "right"}.get(event.button())
-        if button == "left" and self.settings_click(p, self._mods(event)):
+        if button == "left" and self.settings_click(event.position(), self._mods(event)):
             return
         if button:
             tool.press(p, self._mods(event), button)
@@ -1056,6 +1065,7 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         p = self.to_world(event.position())
         self.cursor_moved.emit(*p)
         self.toolbox.active.move(p, self._mods(event))
+        self.settings_cursor(event.modifiers())  # conta-gotas: realça o que está sob ele
         self.restart_dwell()
         self._refresh_hint()
 
@@ -1112,8 +1122,6 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         return super().event(event)
 
     def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Alt, Qt.Key_Control):  # conta-gotas (spec/ui 55 §4.1)
-            self.settings_cursor(event.modifiers())
         if self.tool_key(event):
             return
         if event.key() != Qt.Key_Space and self.forward_text(event):
@@ -1128,8 +1136,6 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event):
-        if event.key() in (Qt.Key_Alt, Qt.Key_Control):
-            self.settings_cursor(event.modifiers())
         if event.key() == Qt.Key_Space and not event.isAutoRepeat():
             self._space = False
             self.unsetCursor()

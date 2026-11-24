@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QCursor, QPainter, QPainterPath, QPalette, QPen, QPixmap
-from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QLineEdit
+from PySide6.QtWidgets import QApplication, QFrame, QGridLayout, QLabel, QLineEdit
 
 from brasbim.core import units
 from brasbim.ui import theme
@@ -450,28 +450,71 @@ class ToolInput:
         else:
             self.unsetCursor()
 
-    def settings_click(self, p, mods) -> bool:
+    # Elemento realçado sob o conta-gotas ou a gota (Alt ou Ctrl+Alt seguros).
+    settings_target: str | None = None
+    _settings_cursor_on = False
+
+    def element_at(self, pos) -> str | None:
+        """Elemento sob a posição da tela (cada vista sabe achar o dela)."""
+        return None
+
+    def settings_click(self, pos, mods) -> bool:
         """Alt+clique num elemento pega os ajustes dele; Ctrl+Alt+clique aplica os pegos
         (spec/ui 55 §4.1). Só com a ferramenta parada: no meio de um desenho, Alt continua
         sendo o clique sem atração."""
         if not mods.alt or tool_busy(self.toolbox.active):
             return False
-        gid = self.ctx.plan.pick(p, self.ctx.tol)
+        gid = self.element_at(pos)
         if not gid:
             return False
         self.settings_clicked.emit(gid, bool(mods.ctrl))
         self.after_tool_input()
         return True
 
-    def settings_cursor(self, mods) -> None:
-        """Cursor do conta-gotas (Alt) ou da gota (Ctrl+Alt) com a ferramenta parada."""
-        if mods & Qt.AltModifier and not tool_busy(self.toolbox.active):
+    def settings_cursor(self, mods=None) -> None:
+        """Com Alt (pegar) ou Ctrl+Alt (aplicar) e a ferramenta parada: cursor de
+        conta-gotas ou de gota e o elemento sob ele realçado; senão, o cursor da
+        ferramenta."""
+        if mods is None:
+            mods = QApplication.keyboardModifiers()
+        active = bool(mods & Qt.AltModifier) and not tool_busy(self.toolbox.active)
+        target = None
+        if active and self.mouse_pos is not None and self.underMouse():
+            target = self.element_at(self.mouse_pos)
+        if active:
             self.setCursor(settings_cursor(bool(mods & Qt.ControlModifier)))
-        else:
+        elif self._settings_cursor_on:
             self.apply_cursor()
+        self._settings_cursor_on = active
+        if target != self.settings_target:
+            self.settings_target = target
+            self.update()
+
+    def settings_key(self, event) -> bool:
+        """Alt e Ctrl ligam e desligam o conta-gotas. O Alt sozinho fica com a vista: no
+        Windows ele levaria o foco ao menu (Arquivo), e a planta pararia de receber as
+        teclas até um novo Alt."""
+        if event.type() not in (QEvent.ShortcutOverride, QEvent.KeyPress, QEvent.KeyRelease)                 or event.key() not in (Qt.Key_Alt, Qt.Key_Control):
+            return False
+        if event.type() != QEvent.ShortcutOverride:
+            # a própria tecla vale como apertada (KeyPress) ou solta (KeyRelease), mesmo
+            # quando o evento não a traz nos modificadores
+            flag = Qt.AltModifier if event.key() == Qt.Key_Alt else Qt.ControlModifier
+            mods = event.modifiers()
+            if event.type() == QEvent.KeyPress:
+                mods = mods | flag
+            elif mods & flag:  # sem "~": num modificador sozinho, o Qt zera tudo
+                mods = mods ^ flag
+            self.settings_cursor(mods)
+        if event.key() == Qt.Key_Alt:
+            event.accept()
+            return True
+        return False
 
     def tool_event(self, event) -> bool:
         """Tab é da ferramenta (spec/ui 01 §5.5, 07 §2.2), não troca o foco."""
+        if self.settings_key(event):
+            return True
         if event.type() == QEvent.KeyPress and event.key() in (Qt.Key_Tab, Qt.Key_Backtab):
             tool = self.toolbox.active
             if tool.fields():

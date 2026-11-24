@@ -94,3 +94,39 @@ def test_aj04_ajustes_da_ferramenta():
                                        "fixed_height": 1.2})
     assert pick_settings.tool_changes(settings) == {"type": "T", "ref_line": "axis",
                                                     "fixed_height": 1.2, "top": "fixed"}
+
+
+def test_aj07_cada_alvo_recebe_os_ajustes_da_sua_classe(model):
+    """Como os ajustes de cada ferramenta: pegar de uma parede e depois de uma cota não
+    apaga os da parede; aplicar nos dois leva a cada um os da classe dele."""
+    a = model.wall((0, 0), (5, 0))
+    b = model.wall((0, 4), (5, 4))
+    model.commit(cmd.edit_wall(model.doc, a, ref_line="axis", top_mode="fixed",
+                               fixed_height=1.10))
+    d_a = created(model, ac.create_dimension(model.doc, model.terreo, [(0, 1), (2, 1)]))
+    d_b = created(model, ac.create_dimension(model.doc, model.terreo, [(0, 3), (5, 3)]))
+    model.commit(ac.edit_element(model.doc, d_a, marker="dot"))
+    from_wall = pick_settings.pick(model.doc, a)
+    from_dim = pick_settings.pick(model.doc, d_a)
+    by_group = {from_wall.group: from_wall, from_dim.group: from_dim}
+    model.commit(pick_settings.apply(model.doc, from_dim, [b, d_b], by_group))
+    state = read_wall(model.doc, b)
+    assert (state["ref_line"], state["top_mode"]) == ("axis", "fixed")
+    assert base.read_state(d_b)["marker"] == "dot"
+    # a origem de cada classe fica de fora sem recusar o resto
+    model.commit(pick_settings.apply(model.doc, from_dim, [a, d_a, b], by_group))
+
+
+def test_aj08_ferramentas_que_recebem_os_ajustes():
+    assert pick_settings.tools_for("wall") == ("wall", "arc", "rectangle")
+    assert pick_settings.tools_for("annotation:dimension") == ("dimension",)
+    column = pick_settings.Settings("column", "Pilar", "x", None,
+                                    {"type": "T", "angle": 30.0, "top_mode": "fixed",
+                                     "fixed_height": 2.5})
+    assert pick_settings.tool_changes(column) == {"angle": 30.0, "fixed_height": 2.5,
+                                                  "top": "fixed"}
+    door = pick_settings.Settings("door", "Porta", "x", None,
+                                  {"type": "P", "width": 0.7, "height": 2.0, "base": 1.1,
+                                   "opens_to": "left"})
+    assert pick_settings.tool_changes(door) == {"type": "P", "width": 0.7, "height": 2.0,
+                                                "base": 1.1}

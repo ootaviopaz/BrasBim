@@ -9,7 +9,6 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import ClassVar
 
 import numpy as np
 from PySide6.QtCore import QPointF, QSettings, Qt, QTimer
@@ -58,7 +57,7 @@ from brasbim.core.fillings import commands as fc
 from brasbim.core.ops import Transaction
 from brasbim.core.structure import solids
 from brasbim.core.walls import commands as cmd
-from brasbim.ui import area_export, feedback, paper, saved_views_ui, theme
+from brasbim.ui import area_export, feedback, paper, saved_views_ui, shortcuts, theme
 from brasbim.ui.assistant import AssistantPanel
 from brasbim.ui.balloon import MessageBalloon
 from brasbim.ui.command_line import (
@@ -215,6 +214,38 @@ class _Pane(QWidget):
         self.layout().addWidget(view, 1)
 
 
+
+def load_tool_settings(tool, picked, doc) -> bool:
+    """Leva os ajustes pegos às opções da ``tool`` (conta-gotas, spec/ui 55 §4.1). Devolve
+    se algo foi levado."""
+    import copy
+
+    from brasbim.core import pick_settings as settings_core
+
+    holder = getattr(tool, "options", None) or tool
+    changed = False
+    for attr, value in settings_core.tool_changes(picked).items():
+        if hasattr(holder, attr):
+            setattr(holder, attr, value)
+            changed = True
+    type_gid = picked.values.get("type")
+    if picked.group in ("column", "beam") and type_gid and hasattr(holder, "shape"):
+        from brasbim.core.structure import types as st_types
+
+        element_type = doc.find(type_gid)
+        if element_type is not None:  # a seção vem do tipo (b × h, círculo ou perfil)
+            section = st_types.section(element_type)
+            holder.type = type_gid
+            holder.shape = section.get("shape", holder.shape)
+            for key in ("b", "h", "d", "profile"):
+                if key in section and hasattr(holder, key):
+                    setattr(holder, key, section[key])
+            changed = True
+    if picked.group.startswith("annotation:") and hasattr(tool, "style"):
+        tool.style = copy.deepcopy(picked.style) or None  # o estilo vale para as próximas
+        changed = True
+    return changed
+
 class MainWindow(QMainWindow):
 
     quiet_dialogs = False  # True nos testes: avisos só em Mensagens
@@ -244,6 +275,7 @@ class MainWindow(QMainWindow):
         self._build_docks()
         self._build_actions()
         self._build_status()
+        shortcuts.apply(self, shortcuts.load(_settings()))  # os do usuário (spec/ui 58)
         session.listeners.append(self._on_session)
         for view in (self.plan, self.view3d):
             self._hook_view(view)
@@ -276,9 +308,7 @@ class MainWindow(QMainWindow):
         view.context_requested.connect(
             lambda gid, pos, v=view: self.show_context_menu(v, gid, pos))
         if hasattr(view, "settings_clicked"):  # conta-gotas (spec/ui 55 §4.1)
-            view.settings_clicked.connect(
-                lambda gid, apply: self.apply_settings([gid]) if apply
-                else self.pick_settings(gid))
+            view.settings_clicked.connect(self.settings_clicked)
         view.selection_bar = SelectionBar(view, self.run_selection_action)
         view.solid_badge = SolidBadge(view, lambda gid: self.session.select([gid]))
 
@@ -674,6 +704,8 @@ class MainWindow(QMainWindow):
         team_menu.addSeparator()
         self.leave_action = self._action(team_menu, "Sair do projeto compartilhado",
                                          self.leave_shared)
+        prefs_menu = bar.addMenu("Pre&ferências")  # spec/ui 58
+        self._action(prefs_menu, "Atalhos de teclado", self.edit_shortcuts)
         help_menu = bar.addMenu("A&juda")
         self._action(help_menu, "Registrar observação", self.register_note)
         self._action(help_menu, "Sobre", self.about)
@@ -2250,6 +2282,21 @@ class MainWindow(QMainWindow):
         self.command_line.setVisible(bool(visible))
         self.hint.setVisible(not visible)
 
+    def edit_shortcuts(self) -> bool:
+        """Preferências > Atalhos de teclado (spec/ui 58)."""
+        dialog = shortcuts.ShortcutsDialog(self, shortcuts.entries(self))
+        if self.quiet_dialogs:  # testes: a janela fica aberta para o teste mexer
+            self.shortcuts_dialog = dialog
+            return False
+        if dialog.exec() != dialog.Accepted:
+            return False
+        self.save_shortcuts(dialog.changes())
+        return True
+
+    def save_shortcuts(self, changes: dict) -> None:
+        shortcuts.apply(self, changes)
+        shortcuts.save(_settings(), changes)
+
     def edit_aliases(self) -> bool:
         from brasbim.ui import command_palette
 
@@ -2289,15 +2336,20 @@ class MainWindow(QMainWindow):
 
     # --- conta-gotas (spec/ui 55 §4) ---------------------------------------------------
 
-    TOOL_GROUPS: ClassVar[dict[str, str]] = {"wall": "wall", "rectangle": "wall", "column": "column", "beam": "beam",
-                   "slab": "slab", "roof": "roof", "space": "space", "door": "door",
-                   "window": "window", "text": "annotation:text",
-                   "line2d": "annotation:line2d", "spline2d": "annotation:spline2d",
-                   "hatch": "annotation:hatch"}
+    def settings_clicked(self, gid: str, apply: bool) -> None:
+        """Alt+clique pega; Ctrl+Alt+clique aplica. Num elemento que faz parte da seleção,
+        aplica em todos os selecionados (spec/ui 55 §4.1)."""
+        if not apply:
+            self.pick_settings(gid)
+            return
+        selection = self.session.selection
+        self.apply_settings(sorted(selection) if gid in selection and len(selection) > 1
+                            else [gid])
 
     def pick_settings(self, gid: str | None = None) -> None:
-        """Pega os ajustes do elemento (Alt+clique ou Editar > Pegar ajustes). Com uma
-        ferramenta de criação da mesma classe ativa, os ajustes vão para ela."""
+        """Pega os ajustes do elemento (Alt+clique ou Editar > Pegar ajustes). Eles passam
+        a valer para as ferramentas que criam esse elemento, esteja ou não uma delas ativa:
+        os próximos saem iguais."""
         from brasbim.core import pick_settings as settings_core
 
         session = self.session
@@ -2313,21 +2365,25 @@ class MainWindow(QMainWindow):
             session.message(str(e), "recusa")
             return
         self.ctx.picked = picked
-        tool = self.toolbox.active
+        if not isinstance(getattr(self.ctx, "picked_by_group", None), dict):
+            self.ctx.picked_by_group = {}
+        self.ctx.picked_by_group[picked.group] = picked
+        loaded = [self.toolbox.tools[name] for name in settings_core.tools_for(picked.group)
+                  if name in self.toolbox.tools
+                  and load_tool_settings(self.toolbox.tools[name], picked, session.doc)]
+        active = self.toolbox.active
+        if active in loaded:
+            self.options_bar.show_for(active)
         text = f"Ajustes pegos: {picked.label}"
-        if self.TOOL_GROUPS.get(tool.name) == picked.group and hasattr(tool, "options"):
-            for attr, value in settings_core.tool_changes(picked).items():
-                if hasattr(tool.options, attr):
-                    setattr(tool.options, attr, value)
-            self.options_bar.show_for(tool)
-            text += f" (valem para a ferramenta {tool.label})"
-        else:
-            text += "; Ctrl+Alt+clique ou Aplicar ajustes leva a outros elementos"
+        if loaded:
+            text += f" (valem para a ferramenta {loaded[0].label})"
+        text += "; Ctrl+Alt+clique ou Aplicar ajustes leva a outros elementos"
         session.message(text)
         self._set_hint(text)
 
     def apply_settings(self, gids=None) -> None:
-        """Aplica os ajustes pegos (Ctrl+Alt+clique ou Aplicar ajustes na seleção)."""
+        """Aplica os ajustes pegos (Ctrl+Alt+clique ou Aplicar ajustes na seleção). Cada
+        alvo recebe os últimos pegos da classe dele."""
         from brasbim.core import pick_settings as settings_core
 
         session = self.session
@@ -2345,7 +2401,9 @@ class MainWindow(QMainWindow):
         except OpError as e:
             session.message(str(e), "recusa")
             return
-        session.run(lambda: settings_core.apply(session.doc, picked, targets))
+        by_group = getattr(self.ctx, "picked_by_group", None)
+        by_group = by_group if isinstance(by_group, dict) else None
+        session.run(lambda: settings_core.apply(session.doc, picked, targets, by_group))
         self.properties.refresh()
 
     def remove_selection_area(self) -> None:
