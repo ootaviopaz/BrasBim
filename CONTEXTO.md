@@ -4,8 +4,28 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑24 (conta‑gotas revisto e atalhos de teclado configuráveis,
-spec/ui 55 e 58).*
+*Atualizado em 2026‑11‑24, fim do dia (conta‑gotas, atalhos, cotas em níveis, abrir IFC
+de outro programa e 3D em lote; spec/ui 55, 58, 59 e 60).*
+
+> **RETOMAR AQUI (2026‑11‑24, fim do dia).** A pasta local foi apagada pelo revisor; tudo
+> está no GitHub, no ramo **`estilo-localizar-contagotas`** (último commit antes desta
+> nota: `a15b766`), **ainda não juntado ao `main`**. Para retomar:
+> `git clone -b estilo-localizar-contagotas https://github.com/ootaviopaz/BrasBim.git`,
+> depois `py -3.12 -m venv .venv` e `.venv\Scripts\python -m pip install -e ".[ui,dev]"`.
+> Testes: `QT_QPA_PLATFORM=offscreen` + `pytest -q` → 1088 passaram, 4 pulados (~6 min).
+> Os diários de sessão (`feedback/diarios/`, fora do git) se perderam junto; nada deles
+> faz falta (o que importava está nas specs e no `CHANGELOG.md`).
+> **Próximos passos para lançar a 0.0.2:** (1) o revisor testar de novo a abertura do IFC
+> grande (IFC2X3 em mm, ~1 milhão de entidades: ~5 min para abrir, com andamento; salvar
+> em 4.3 com nome novo e reabrir fica em ~1,5 min) e o 3D (girar deve ficar fluido);
+> (2) itens G4 (IFC em outro programa) e H3 (instalador) do `docs/roteiro-teste-0.0.2.md`;
+> (3) pull request do ramo para o `main`; (4) trocar "em desenvolvimento" pela data no
+> `CHANGELOG.md`, gerar o .exe e criar a tag `v0.0.2` com o texto da versão como nota.
+> **Pendências abertas:** hachura do material no corte das peças de outro programa;
+> linhas escondidas na vista dessas peças; contornos do 3D calculados na preparação ao
+> abrir (o 1º quadro do 3D do IFC grande leva ~8 s); acelerar a conversão mm→m (~1 min,
+> `convert_file_length_units` em Python puro); pontos (a)–(d) da spec/ui 58 §6 (atalhos);
+> adiados pelo revisor: forma livre (escultura, corte/fachada) e rodar no navegador.
 
 > **2026‑11‑24 (mesmo ramo `estilo-localizar-contagotas`):** (1) **Conta‑gotas revisto**
 > ("não tem funcionado bem"), comparado com a ajuda pública do Archicad: pegar leva os
@@ -59,7 +79,7 @@ spec/ui 55 e 58).*
 e substituir, conta‑gotas, cópia com Ctrl, barra Opções com a seleção, penas por
 elemento, texto da cota móvel, cotas pelo Assistente).*
 
-> **Onde está o trabalho de 2026‑11‑23:** ramo **`estilo-localizar-contagotas`** no
+> **Onde está o trabalho de 2026‑11‑23** (superado pela nota "RETOMAR AQUI" acima): ramo **`estilo-localizar-contagotas`** no
 > GitHub (feito sobre `assistente-foto-objeto`), commits `561e113`, `4186954`, `8a5c931`
 > e este. **Ainda não juntado ao `main`**: para retomar, `git clone
 > https://github.com/ootaviopaz/BrasBim.git` e `git checkout estilo-localizar-contagotas`,
