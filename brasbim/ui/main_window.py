@@ -681,6 +681,8 @@ class MainWindow(QMainWindow):
         self._action(project_menu, "Perfil municipal", lambda: self.edit_municipal())
         self._action(project_menu, "Unidades do projeto", lambda: self.edit_units())
         project_menu.addSeparator()
+        self._action(project_menu, "Cotar pavimento", lambda: self.dimension_storey())
+        project_menu.addSeparator()
         self._action(project_menu, "Biblioteca de objetos", self.show_library)
         self._action(project_menu, "Novo objeto", lambda: self.new_object())
         self._action(project_menu, "Pastas da biblioteca", self.edit_library_folders)
@@ -2281,6 +2283,44 @@ class MainWindow(QMainWindow):
         self.command_line_action.setChecked(bool(visible))
         self.command_line.setVisible(bool(visible))
         self.hint.setVisible(not visible)
+
+    def dimension_storey(self, levels=None, sides=None) -> bool:
+        """Projeto > Cotar pavimento: cotas em níveis do pavimento ativo (spec/ui 59).
+        Com ``levels`` e ``sides``, sem a janela."""
+        from brasbim.core.annotations import dimension_levels as levels_core
+
+        session = self.session
+        storey = session.storey
+        if storey is None:
+            session.message("escolha um pavimento para cotar", "recusa")
+            return False
+        if levels is None:
+            from brasbim.ui.dimension_levels_dialog import DimensionLevelsDialog
+
+            dialog = DimensionLevelsDialog(self, storey.Name or "")
+            if self.quiet_dialogs:  # testes: a janela fica aberta para o teste mexer
+                self.dimension_dialog = dialog
+                return False
+            if dialog.exec() != QDialog.Accepted:
+                return False
+            levels, sides = dialog.chosen_levels(), dialog.chosen_sides()
+        result = {}
+
+        def build():
+            tx, result["found"] = levels_core.create(session.doc, storey, levels,
+                                                     sides or levels_core.SIDES)
+            return tx
+
+        if not session.run(build):
+            return False
+        found = result["found"]
+        text = f"Cotas do pavimento: {len(found['create'])} linhas"
+        if found["kept"]:
+            text += f"; {len(found['kept'])} mexidas à mão ficaram"
+        if found["skipped"]:
+            text += f"; {len(found['skipped'])} puladas"
+        session.message(text)
+        return True
 
     def edit_shortcuts(self) -> bool:
         """Preferências > Atalhos de teclado (spec/ui 58)."""

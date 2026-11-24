@@ -94,6 +94,14 @@ Aberta em 2026‑11‑12. Tudo o que for feito a partir desta data entra aqui.
   cada parede reta do pavimento (ou só das que você indicar): pontas e bordas das portas
   e janelas, na face externa, acompanhando quando a parede muda. Pula as curvas e as que
   já têm cota; tudo num Desfazer. (spec/ui 16 §4.4)
+- **Cotas em níveis.** Projeto > **Cotar pavimento** (ou peça ao Assistente "cote a
+  planta em 3 níveis") cota cada lado da planta em linhas paralelas, como num projeto:
+  **aberturas** perto do desenho (cantos e vãos de portas e janelas), **estrutura** no
+  meio (faces dos pilares e das paredes que chegam à fachada) e **total** por fora;
+  também a largura e a profundidade de cada **cômodo**, face a face. Escolha os níveis e
+  os lados; a linha que repetiria outra não sai. As cotas acompanham o modelo e refazer
+  substitui as automáticas (as que você mexeu ficam). Um Desfazer volta tudo.
+  (spec/ui 59)
 - **Atalhos de teclado configuráveis.** Menu novo **Preferências > Atalhos de teclado**:
   qualquer item dos menus e qualquer ferramenta pode ter o atalho que você quiser. Busca
   por nome ou pelo atalho, aviso quando o atalho já era de outro comando (ele passa para

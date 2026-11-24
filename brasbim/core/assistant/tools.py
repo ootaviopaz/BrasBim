@@ -1332,6 +1332,21 @@ def dimension_walls(ctx: Context, args: dict) -> dict:
     return {"cotas": created, "paredes": [w.GlobalId for w in ok], "puladas": skipped}
 
 
+def dimension_levels(ctx: Context, args: dict) -> dict:
+    """Cotas em níveis do pavimento (spec/ui 59)."""
+    from brasbim.core.annotations import dimension_levels as levels_core
+
+    doc = ctx.doc
+    storey = _storey(ctx, args)
+    levels = args.get("levels") or [*levels_core.LEVELS]
+    sides = args.get("sides") or [*levels_core.SIDES]
+    tx, found = levels_core.create(doc, storey, levels, sides)
+    ctx.commit(tx)
+    created = [op.id for op in tx.ops if op.op == "dimension.create"]
+    return {"cotas": created, "refeitas": len(found["remove"]),
+            "mantidas_por_terem_sido_editadas": found["kept"], "puladas": found["skipped"]}
+
+
 # --- registro -----------------------------------------------------------------------------
 
 _XY = {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2,
@@ -1699,4 +1714,21 @@ def default_registry() -> Registry:
         "têm cota (again=true cota de novo).",
         _obj({"ids": _IDS, "storey": _STOREY, "again": {"type": "boolean"}}),
         dimension_walls))
+    reg.add(Tool(
+        "dimension_levels", "Cotando o pavimento em níveis",
+        "Cota o pavimento como num projeto: em cada lado da planta, linhas de cota "
+        "paralelas, de dentro para fora: openings (cantos da fachada e bordas das portas "
+        "e janelas), structure (cantos, faces dos pilares e das paredes internas que "
+        "chegam à fachada) e total (ponta a ponta); rooms faz largura e profundidade de "
+        "cada ambiente retangular, face a face. Linha que repetiria outra não sai. "
+        "Associativas; refazer substitui as automáticas anteriores (as que o usuário "
+        "mexeu ficam). Lados: bottom, top, left, right da planta.",
+        _obj({"levels": {"type": "array", "items": {
+                  "type": "string", "enum": ["openings", "structure", "total", "rooms"]},
+                  "description": "níveis (padrão: openings, structure e total)"},
+              "sides": {"type": "array", "items": {
+                  "type": "string", "enum": ["bottom", "top", "left", "right"]},
+                  "description": "lados da planta (padrão: os quatro)"},
+              "storey": _STOREY}),
+        dimension_levels))
     return reg

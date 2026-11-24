@@ -25,7 +25,9 @@ spec/ui 55 e 58).*
 > da cota ao arrastar (pedido), linhas falsas no 3D das paredes por camadas
 > (`Mesh.outline`: contorno dos triângulos sem a divisão). **Pendentes:** cotas em vários
 > níveis pelo Assistente (proposta `spec/ui/59-cotas-em-niveis.md`, pontos (a)–(e) para o
-> revisor). **Adiados pelo revisor ("para um próximo momento"):** forma livre (escultura e
+> revisor) — **feito** no mesmo dia, com as respostas (faces dos pilares, cômodos e a
+> janela Projeto > Cotar pavimento): `core/annotations/dimension_levels.py`, ferramenta
+> `dimension_levels` do Assistente, testes CN01–CN08. **Adiados pelo revisor ("para um próximo momento"):** forma livre (escultura e
 > corte/fachada) e rodar no navegador (opções levantadas: transmitir com Xpra/noVNC,
 > visualizador web do IFC, versão web).
 

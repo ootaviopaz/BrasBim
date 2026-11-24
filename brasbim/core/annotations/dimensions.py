@@ -401,7 +401,8 @@ DIMENSION = base.Kind("dimension", "cota", "DIMENSION", None,
                       {"points": [], "direction": "aligned", "angle": 0.0, "offset": 0.0},
                       _build, _mapped, _depends, _validate,
                       optional=("marker", "marker_size", "texts", "prefix", "suffix",
-                                "decimals", "text_moves"))
+                                "decimals", "text_moves",
+                                "auto"))  # cota em níveis, para refazer (spec/ui 59)
 base.register_kind(DIMENSION)
 
 

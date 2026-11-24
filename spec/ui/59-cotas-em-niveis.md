@@ -3,7 +3,7 @@ documento: Cotas em níveis (cotagem externa e interna do pavimento)
 requisito: pedido do revisor (2026-11-24): "o assistente não está fazendo cotas em mais de 1 nível. O usuário pode pedir cotas em 3 níveis, primeiro com medidas gerais, segundo considerando elementos estruturais e terceiro considerando aberturas… seguir o padrão e normas de cotas"
 autor: Claude Code (sessão limpa, sem acesso a _restrito/)
 data: 2026-11-24
-status: proposta, aguarda revisão (§8)
+status: aprovada com as respostas do revisor (2026-11-24, §8) e implementada (§9)
 revisor: OTTO
 ---
 
@@ -22,7 +22,7 @@ Para cada lado do edifício (fachada), linhas paralelas à fachada, de dentro pa
 | Nível | Nome | O que mede | Pontos |
 |---|---|---|---|
 | 1 | **Aberturas** | vãos de portas e janelas e os trechos de parede entre eles | cantos externos da fachada, bordas de cada vão |
-| 2 | **Estrutura** | pilares e paredes que chegam à fachada (eixos dos cômodos) | cantos externos, faces dos pilares (ou eixos, §8 b) e o eixo de cada parede interna que encontra a fachada |
+| 2 | **Estrutura** | pilares e paredes que chegam à fachada | cantos externos, faces dos pilares e faces de cada parede que encontra a fachada (§8 b) |
 | 3 | **Total** | a medida da fachada de ponta a ponta | os dois cantos externos |
 
 - **Ordem**: o nível mais detalhado fica mais perto do desenho, o total mais longe, para
@@ -46,11 +46,12 @@ Pedido por "cote os cômodos" ou junto ("cote tudo").
 
 ## 4. Onde se usa
 - **Assistente**: ferramenta nova `dimension_levels` (`levels`: lista entre `openings`,
-  `structure`, `total`, `rooms`; `sides`: `north`, `south`, `east`, `west` ou todos;
-  `storey`). As instruções da IA explicam os níveis e o padrão (três externos), e que o
+  `structure`, `total`, `rooms`; `sides`: `bottom`, `top`, `left`, `right` da planta, ou
+  todos; `storey`). Os lados são os da planta, não os pontos cardeais (o norte do projeto
+  pode estar girado). As instruções da IA explicam os níveis e o padrão (três externos), e que o
   pedido do usuário manda ("cotas gerais" = total; "estrutura"/"pilares"/"eixos" =
   estrutura; "vãos"/"aberturas"/"esquadrias" = aberturas).
-- **Interface**: Projeto > **Cotar pavimento…** (janela pequena com as marcas dos níveis
+- **Interface**: Projeto > **Cotar pavimento** (janela pequena com as marcas dos níveis
   e dos lados), para quem não usa o Assistente.
 - Tudo numa transação (um Desfazer). Repetir não duplica: as cotas automáticas de uma
   fachada são refeitas (as que o usuário mexeu à mão ficam).
@@ -79,9 +80,28 @@ estado para refazer sem duplicar.
   `core/annotations/dimensions.resolve` (pontos presos a parede, vão, pilar, viga).
 
 ## 8. Pontos para o revisor
+**Respostas (2026‑11‑24):** (a) sim; (b) **faces** dos pilares (e, pelo mesmo critério, as
+faces das paredes que chegam à fachada); (c) sim; (d) cômodos já; (e) a janela Projeto >
+Cotar pavimento também.
+
 - (a) Os três níveis e a ordem (aberturas perto, total longe) estão certos?
 - (b) No nível **Estrutura**: medir as **faces** dos pilares ou os **eixos** dos pilares?
   E incluir o eixo das paredes internas que chegam à fachada (proposta: sim)?
 - (c) Espaçamento 12 mm até a 1ª linha e 7 mm entre linhas (papel) serve?
 - (d) Cotas internas dos cômodos entram já, ou depois?
 - (e) A janela Projeto > Cotar pavimento também, ou só pelo Assistente por enquanto?
+
+## 9. Implementação (2026‑11‑24)
+- `core/annotations/dimension_levels.py`: contorno externo do pavimento (paredes retas e
+  pilares unidos, `shapely`); por lado, as arestas do contorno que se veem de fora (a
+  lateral de um ressalto noutra fachada fica de fora); pontos de cada nível presos à
+  candidata mais de fora que mede aquele valor (ponta/face de parede, borda de vão,
+  canto de pilar), ou solto na face se nenhuma servir. Cotas `fixed` (0° ou 90°), marca
+  `auto` no estado (campo opcional novo da cota). `plan` (o que faria) e `create`
+  (transação única: apaga as automáticas anteriores não mexidas e cria as novas).
+- Cômodos: ambientes de 4 vértices nos eixos; pontos presos aos vértices do ambiente.
+- Assistente: `assistant/tools.dimension_levels` e as instruções (`mcp.INSTRUCTIONS`).
+- Interface: `ui/dimension_levels_dialog.py`, `MainWindow.dimension_storey`.
+- Testes CN01–CN08 (`tests/test_cotas_niveis.py`).
+- **Limites**: fachadas fora dos eixos x e y e paredes curvas não entram no contorno;
+  ambientes não retangulares são pulados (com o motivo).
