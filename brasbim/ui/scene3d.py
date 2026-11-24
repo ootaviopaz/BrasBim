@@ -28,6 +28,7 @@ from brasbim.core import (
     layers,
     materials,
     mesh_layers,
+    plan_foreign,
     props,
     terrain,
 )
@@ -337,6 +338,7 @@ class Scene:
         self.extra_hidden: set[str] = set()  # ocultos da janela (spec/ui 39 §4)
         self._layers: dict[str, dict] = {}  # por pavimento: {parede: [(material, anéis)]}
         self._tessellations = 0
+        self._prefetched: dict = {}  # triangulação em lote durante ``load``
         self._settings = ifcopenshell.geom.settings()
         self._settings.set("use-world-coords", True)
 
@@ -390,9 +392,12 @@ class Scene:
             return entity.Representation is not None
         if any(entity.is_a(c) for c in objects.OCCURRENCE_CLASSES):
             # objeto paramétrico: os aninhados vão na malha do objeto de fora (§6.4)
-            return objects.is_object(entity) or freeform.is_freeform(entity)
-        return (any(entity.is_a(c) for c in self.CLASSES) and entity.Representation is not None
-                and not roofs.is_part(entity))
+            return objects.is_object(entity) or freeform.is_freeform(entity)                 or plan_foreign.is_foreign(entity)
+        if any(entity.is_a(c) for c in self.CLASSES):
+            return entity.Representation is not None and not roofs.is_part(entity)
+        # peça de outro programa de qualquer classe (montante, painel, rampa, peça
+        # genérica…): pela malha do corpo (spec/ui 60 §3)
+        return plan_foreign.is_foreign(entity)
 
     def _roof_mesh(self, roof) -> Mesh | None:
         found = [m for m in (self._mesh(p) for p in roofs.parts_of(roof)) if m is not None]
@@ -459,12 +464,13 @@ class Scene:
         self._tessellations += 1
         if freeform.is_freeform(entity):
             return self._freeform_mesh(entity)
-        try:
-            shape = props.body_shape(self._settings, entity)
-        except RuntimeError as e:
-            log.debug("sem geometria 3D para %s: %s", entity.GlobalId, e)
-            return None
-        g = shape.geometry
+        g = self._prefetched.get(entity.id())
+        if g is None or not len(g.faces):
+            try:
+                g = props.body_shape(self._settings, entity).geometry
+            except RuntimeError as e:
+                log.debug("sem geometria 3D para %s: %s", entity.GlobalId, e)
+                return None
         verts = np.asarray(g.verts, dtype=np.float32).reshape(-1, 3)
         faces = np.asarray(g.faces, dtype=np.int64)
         edges = np.asarray(g.edges, dtype=np.int64)
@@ -530,12 +536,27 @@ class Scene:
         self._layers.clear()
         self.meshes.clear()
         self._hidden.clear()
-        for cls in self.CLASSES:
+        wanted, seen = [], set()
+        for cls in (*self.CLASSES, "IfcElement"):  # por último, as de outro programa
             for entity in ifc.by_type(cls):
-                if self._wanted(entity):
-                    mesh = self._mesh(entity)
-                    if mesh is not None:
-                        self.meshes[entity.GlobalId] = mesh
+                if entity.id() not in seen and self._wanted(entity):
+                    seen.add(entity.id())
+                    wanted.append(entity)
+        # as de outro programa (podem ser milhares) são trianguladas juntas, em paralelo
+        foreign = [e for e in wanted if plan_foreign.is_foreign(e)]
+        if self.doc is not None and self.doc.ifc is ifc:  # a mesma reserva da planta
+            found = plan_foreign.shapes(self.doc, foreign)
+            self._prefetched = {e.id(): found[e.GlobalId] for e in foreign
+                                if e.GlobalId in found}
+        else:
+            self._prefetched = plan_foreign.geometries(ifc, foreign, self._settings)
+        try:
+            for entity in wanted:
+                mesh = self._mesh(entity)
+                if mesh is not None:
+                    self.meshes[entity.GlobalId] = mesh
+        finally:
+            self._prefetched = {}
         self.apply_layers()
 
     def apply_layers(self) -> None:

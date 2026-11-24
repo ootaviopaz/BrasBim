@@ -10,7 +10,9 @@ o preenchimento vem das regiões), ``wall_view`` (em vista: abaixo do plano, e a
 no peitoril), ``wall_above`` (acima do plano: tracejado), ``below`` (parede do pavimento
 de baixo), ``door_frame`` (marco, preenchido), ``door_leaf`` (folha), ``door_swing`` (arco
 de giro, linha fina), ``door_arrow`` (seta de correr), ``door_hidden`` (tracejada) e
-``door`` (contorno de porta de outra origem). A janela usa os mesmos papéis de porta
+``door`` (contorno de porta de outra origem). Elemento de outro programa sem desenho
+paramétrico (spec/ui 60 §3): ``foreign`` (contorno cortado, para escolher; o fundo vem
+das regiões) e ``foreign_view`` (arestas abaixo do plano, linha fina). A janela usa os mesmos papéis de porta
 para o marco, a folha aberta, o arco e a seta, e mais ``window_sash`` (faces do perfil do
 caixilho fechado) e ``window_glass`` (vidro), em linha fina (spec/ui 09 §6.2).
 
@@ -51,7 +53,6 @@ from brasbim.core import (
     intervention,
     layers,
     materials,
-    props,
     storeys,
     units,
 )
@@ -925,17 +926,15 @@ def _slab_fill(element_type) -> dict:
     return _fill_of_type(style) if style else {"pattern": "none", "source": "type"}
 
 
-def _foreign_element(element, storey, kind: str) -> _Element | None:
-    """Elemento de outra origem: contorno convexo do corpo, visto de cima."""
-    import ifcopenshell.geom
+def _foreign_element(doc: Document, element, storey, kind: str) -> _Element | None:
+    """Elemento de outra origem: contorno convexo do corpo, visto de cima (a malha vem da
+    reserva de ``plan_foreign``, para não ser refeita a cada desenho)."""
+    from brasbim.core import plan_foreign
 
-    settings = ifcopenshell.geom.settings()
-    settings.set("use-world-coords", True)
-    try:
-        shape = props.body_shape(settings, element)
-    except RuntimeError:
+    mesh = plan_foreign.meshes(doc, [element]).get(element.GlobalId)
+    if mesh is None:
         return None
-    verts = np.array(shape.geometry.verts, dtype=float).reshape(-1, 3)
+    verts = mesh[0]
     m = np.linalg.inv(ifcopenshell.util.placement.get_local_placement(storey.ObjectPlacement))
     local = (m @ np.c_[verts, np.ones(len(verts))].T).T[:, :3]
     ring = geom2d.convex_hull([(float(x), float(y)) for x, y, _ in local])
@@ -952,7 +951,7 @@ def _structure_element(doc: Document, element, storey) -> _Element | None:
     try:
         state = module.read_state(doc, element)
         if state["foreign"] is not None:
-            return _foreign_element(element, storey, kind)
+            return _foreign_element(doc, element, storey, kind)
         element_type = doc.get(state["type"])
         if kind == "column":
             ring = columns.outline(doc, state)
@@ -1264,6 +1263,7 @@ def _storey_plan(doc: Document, storey, show_below: bool, detail: str,
     _skylights(doc, storey, plan)
     _stairs_and_railings(doc, storey, plan, cut)
     _objects(doc, storey, plan, cut)
+    _foreign(doc, storey, plan, cut)
     _roofs(doc, storey, plan, cut, show_above)
     _documentation(doc, storey, plan)
     from brasbim.core import pens
@@ -1271,6 +1271,36 @@ def _storey_plan(doc: Document, storey, show_below: bool, detail: str,
     plan.pens = {gid: pens.annotation_category(doc, doc.find(gid))
                  for gid in {owner for owner, _ in plan.annotations}}
     return plan
+
+
+def _foreign(doc: Document, storey, plan: Plan, cut: float) -> None:
+    """Elementos de outro programa que nada acima desenhou (parede sem as camadas do
+    BrasBim, escada, móvel, fachada-cortina…): pela malha, cortados e em vista (spec/ui
+    60 §3)."""
+    from brasbim.core import plan_foreign
+
+    drawn = {s.owner for s in plan.shapes} | {lb.owner for lb in plan.labels}
+    hidden = display_layers.hidden_ids(doc)
+    elements = []
+    for e in _decompose(storey):
+        if e.GlobalId in drawn or e.GlobalId in hidden or not plan_foreign.is_foreign(e):
+            continue
+        owner = plan_foreign.owner_of(e)
+        if owner.GlobalId not in drawn and owner.GlobalId not in hidden:
+            elements.append(e)
+    if not elements:
+        return
+    cut_rings, view = plan_foreign.draw(doc, storey, elements, cut)
+    for owner, lines in view.items():
+        plan.shapes += [Shape(owner, "foreign_view", tuple(line), False) for line in lines]
+    for owner, rings in cut_rings.items():
+        tint = plan.colors.get(owner)
+        chosen = plan.element_pens.get(owner, {})  # spec/ui 57
+        plan.regions.append(Region(owner, rings, {"pattern": "none", "source": "type"}, tint,
+                                   plan.hatches.get(owner), chosen.get("fill")))
+        plan.edges.append(Edge(rings, CUT_WEIGHT, materials.LINE_COLOR, tint=tint,
+                               pen_no=chosen.get("cut")))
+        plan.shapes += [Shape(owner, "foreign", tuple(r), True) for r in rings]
 
 
 CEILING_MM = 0.13  # projeção do forro (revisão de 2026-11-07)

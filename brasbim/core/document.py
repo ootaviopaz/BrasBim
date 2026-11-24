@@ -101,15 +101,17 @@ class Document:
 
     @classmethod
     def open(cls, path: str, progress=None) -> Document:
-        """Abre o arquivo; IFC 2x3 e IFC 4 são convertidos para o 4.3 e ``converted_from``
-        guarda o esquema de origem (spec/ui 60)."""
+        """Abre o arquivo; IFC 2x3 e IFC 4 são convertidos para o 4.3 e as medidas em mm,
+        cm ou pés para metros. ``converted_from`` diz de onde veio ("IFC2X3, em
+        milímetros"), ou ``None`` (spec/ui 60)."""
         from brasbim.core import ifc_upgrade
 
-        ifc = ifcopenshell.open(path)
-        source = ifc.schema
-        converted = ifc_upgrade.needs_upgrade(ifc)
-        doc = cls(ifc_upgrade.upgrade(ifc, progress) if converted else ifc)
-        doc.converted_from = source if converted else None
+        ifc, notes = ifc_upgrade.prepare(ifcopenshell.open(path), progress)
+        doc = cls(ifc)
+        if notes:
+            schema = [n for n in notes if n.startswith("IFC")]
+            unit = [f"em {n}" for n in notes if not n.startswith("IFC")]
+            doc.converted_from = ", ".join(schema + unit)
         return doc
 
     def save(self, path: str) -> None:

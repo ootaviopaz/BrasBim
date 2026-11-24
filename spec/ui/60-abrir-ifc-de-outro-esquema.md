@@ -35,8 +35,32 @@ programa.
   envolve o contorno.
 - Selecionar um elemento de outro programa (parede sem as camadas ou o eixo do BrasBim):
   a barra Opções mostra "Características no painel Propriedades", em vez de dar erro.
+- **Unidades**: arquivo em mm, cm ou pés tem as medidas de comprimento passadas para
+  metros (`ifcopenshell.util.unit.convert_file_length_units`), a unidade do modelo do
+  BrasBim; o aviso diz a origem ("IFC2X3, em milímetros"). Vale também para IFC 4.3.
 
-## 3. Testes
+## 3. Peças de outro programa na planta e no 3D (relato do revisor, 2026‑11‑24)
+"Na importação faltaram várias paredes, escadas, objetos": a planta só desenhava o que
+tem os dados do BrasBim, e o 3D só uma lista fixa de classes.
+- **Peça de outro programa**: elemento com corpo (`Representation`) sem Pset
+  `BrasBim_*` (fora `BrasBim_Intervencao` e `BrasBim_PenasElemento`, que o BrasBim põe em
+  qualquer elemento), nem ele nem o conjunto de que faz parte. Aberturas, elementos
+  virtuais e anotações ficam de fora.
+- **Planta**: o que o desenho paramétrico não desenhou aparece pela malha do corpo,
+  como no corte (spec/ui 14 §4): a interseção com o plano de corte com fundo e contorno
+  grosso; as quinas abaixo do plano, projetadas, em linha fina, sem o que fica sob as
+  partes cortadas; o que está todo acima do plano não aparece. A peça de um conjunto
+  (lance de escada, montante de fachada‑cortina) responde pelo conjunto.
+- **3D**: todas as peças de outro programa, de qualquer classe.
+- **Desempenho**: logo depois de abrir, a geometria de todas as peças é feita de uma
+  vez, em paralelo, com a janela de andamento ("Preparando a geometria…"); a planta e o
+  3D usam essa mesma reserva, refeita só para o elemento que muda (posição ou corpo). Na
+  tela, as linhas em vista vão num traço só, sem as que estão fora da tela.
+- **Limites**: sem hachura de material no corte (só fundo e contorno), linhas em vista
+  sem remoção das escondidas umas pelas outras (só sob as partes cortadas), e o
+  elemento não vira paramétrico.
+
+## 4. Testes
 - **AO01** IFC 2x3 e IFC 4 com `IfcDoorStyle` e estilo de superfície do 2x3: abre em 4.3,
   porta com `IfcDoorType` `DOOR`, planta montada.
 - **AO02** arquivo 4.3 abre sem conversão.
@@ -44,9 +68,16 @@ programa.
   intacto.
 - **AO04** etiqueta de viga com contorno de 6 vértices.
 - **AO05** selecionar parede de outro programa: a barra Opções não quebra.
+- **AO06** planta: parede de outro programa cortada (contorno, fundo), mesa em vista,
+  montante acima do plano de fora, lance de escada respondendo pela escada.
+- **AO07** parede do BrasBim não vira malha.
+- **AO08** 3D: mesa, montante e peças genéricas (em lote).
+- **AO09** arquivo em mm abre em metros.
 
-## 4. Fontes
+## 5. Fontes
 - IfcOpenShell, `ifcopenshell.util.schema.Migrator` (documentação e código abertos,
   LGPL‑3.0).
+- IfcOpenShell, `ifcopenshell.util.unit.convert_file_length_units` e
+  `ifcopenshell.geom.iterator` (triangulação em paralelo).
 - buildingSMART, IFC 4.3: `IfcDoorType`, `IfcWindowType` (substitutos de `IfcDoorStyle` e
   `IfcWindowStyle`, retirados no 4.3).

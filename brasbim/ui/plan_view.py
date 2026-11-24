@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
+import numpy as np
+from PySide6.QtCore import QLineF, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -490,13 +491,16 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         for rings in floors.values():
             painter.fillPath(self._rings_path(rings).subtracted(holes), C["background"])
         rest = []
+        batched = self._draw_foreign_view(painter, plan, selection)
         for shape in plan.shapes:
             role = shape.role
+            if role == "foreign_view" and shape.owner in batched:
+                continue
             if role in _OBJECT_ROLES:  # mobiliário e equipamentos: sob as paredes cortadas
                 self._draw_object(painter, shape, shape.owner in selection)
                 continue
             if role not in ("below", "wall_above", "wall_view", "slab_view", "slab_above",
-                            "slab_opening", "slab_opening_x"):
+                            "slab_opening", "slab_opening_x", "foreign_view"):
                 rest.append(shape)
                 continue
             selected = shape.owner in selection
@@ -572,7 +576,8 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             if role in ("plant", "plant_fill"):  # vegetação: por cima das paredes
                 self._draw_object(painter, shape, selected)
                 continue
-            if role in ("wall", "column", "beam", "slab", "space", "roof", "covering"):
+            if role in ("wall", "column", "beam", "slab", "space", "roof", "covering",
+                        "foreign"):
                 # O desenho vem das regiões (cortados) ou das linhas da vista: aqui só o
                 # destaque da seleção.
                 if not selected:
@@ -605,6 +610,47 @@ class PlanView(QWidget, ToolInput, FrameHistory):
                 painter.setPen(QPen(color, (0.8 if thin else 1.3) * self.unit * scale, style))
                 painter.setBrush(QBrush(color) if role == "door_frame" else Qt.NoBrush)
             painter.drawPath(path)
+
+    def _draw_foreign_view(self, painter: QPainter, plan, selection) -> set:
+        """Arestas em vista dos elementos de outro programa (spec/ui 60 §3): podem ser
+        centenas de milhares; as de pena comum vão num traço só, com as fora da tela
+        deixadas de lado. Devolve os donos desenhados aqui."""
+        cache = getattr(plan, "_foreign_view_cache", None)
+        if cache is None:
+            owners, segments = [], []
+            for shape in plan.shapes:
+                if shape.role == "foreign_view" and len(shape.points) == 2:
+                    owners.append(shape.owner)
+                    segments.append((*shape.points[0], *shape.points[1]))
+            cache = (np.array(owners, dtype=object),
+                     np.array(segments, dtype=float).reshape(-1, 4))
+            plan._foreign_view_cache = cache
+        owners, segments = cache
+        if not len(owners):
+            return set()
+        special = {o for o in set(owners.tolist()) if o in selection or self.tint(o)
+                   or self._element_pen(o, "view") is not None}
+        keep = ~np.isin(owners, list(special)) if special else np.ones(len(owners), bool)
+        xy = segments[keep].reshape(-1, 2)
+        if self.rotation:
+            c, s = math.cos(self.rotation), math.sin(self.rotation)
+            xy = np.c_[xy[:, 0] * c + xy[:, 1] * s, xy[:, 1] * c - xy[:, 0] * s]
+        sx = self.origin.x() + xy[:, 0] * self.scale
+        sy = self.origin.y() - xy[:, 1] * self.scale
+        pts = np.c_[sx, sy].reshape(-1, 4)
+        if isinstance(self, QWidget):  # na tela (na folha impressa vai tudo)
+            w, h = self.width(), self.height()
+            visible = ~(((pts[:, 0] < 0) & (pts[:, 2] < 0)) | ((pts[:, 0] > w) & (pts[:, 2] > w))
+                        | ((pts[:, 1] < 0) & (pts[:, 3] < 0))
+                        | ((pts[:, 1] > h) & (pts[:, 3] > h)))
+            pts = pts[visible]
+            # menor que meio pixel não se vê
+            pts = pts[np.abs(pts[:, 0] - pts[:, 2]) + np.abs(pts[:, 1] - pts[:, 3]) > 0.5]
+        painter.setPen(QPen(QColor(self.pens.color("view")),
+                            max(self.unit, self._px(self.pens.weight("view", VIEW_WEIGHT)))))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawLines([QLineF(*row) for row in pts.tolist()])
+        return set(owners.tolist()) - special
 
     def _draw_object(self, painter: QPainter, shape, selected: bool) -> None:
         """Símbolo do objeto paramétrico (objeto-parametrico.md §7): linha fina; o contorno

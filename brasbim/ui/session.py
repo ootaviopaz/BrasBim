@@ -236,9 +236,9 @@ class Session:
             doc.converted_from))
         self.message(f"Aberto: {path}")
         if doc.converted_from:
-            self.message(f"O arquivo estava em {doc.converted_from} e foi convertido para o "
-                         "IFC 4.3. Ao salvar, escolha um nome: o original não é alterado "
-                         "(para entregar em 2x3 ou 4, use Exportar IFC).", "aviso")
+            self.message(f"Arquivo convertido para o IFC 4.3, em metros (origem: "
+                         f"{doc.converted_from}). Ao salvar, escolha um nome: o original não "
+                         "é alterado (para entregar em 2x3 ou 4, use Exportar IFC).", "aviso")
         organize = display_layers.organize(doc)  # arquivo sem camadas (§3.1, CM12)
         if organize is not None:
             self.history.commit(organize)

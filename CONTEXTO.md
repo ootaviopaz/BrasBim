@@ -39,6 +39,16 @@ spec/ui 55 e 58).*
 > de outro programa. Spec/ui 60, testes AO01–AO05. O arquivo real do
 > revisor (≈1 milhão de entidades) leva ~2,5 min para converter: medir e, se preciso,
 > otimizar.
+> **Peças de outro programa (mesmo dia, "faltaram paredes, escadas, objetos"):**
+> `core/plan_foreign.py` (critério `is_foreign`: corpo e nenhum Pset `BrasBim_*` próprio;
+> reserva de geometria por documento, compartilhada pela planta e pelo 3D; triangulação
+> em lote com `ifcopenshell.geom.iterator`), `plan._foreign` (papéis `foreign` e
+> `foreign_view`), `PlanView._draw_foreign_view` (traço único, sem o que está fora da
+> tela), `Scene._wanted`/`load` (qualquer classe), `plan_foreign.prepare` no
+> `open_path`. Unidades: `ifc_upgrade.to_meters`. Testes AO06–AO09. No arquivo do
+> revisor (≈1 milhão de entidades): converter 2x3→4.3 ~2,5 min, mm→m ~1 min, geometria
+> ~1,5 min (só na primeira abertura salva em 4.3: ~1,5 min); planta 0,2–8 s, 3D 6,5 s.
+> **Pendente:** hachura do material no corte das peças de fora; linhas escondidas na vista.
 
 *Antes: 2026‑11‑23 (spec/ui 55–57 e 16 §4.4: estilo das cotas e textos, Localizar
 e substituir, conta‑gotas, cópia com Ctrl, barra Opções com a seleção, penas por

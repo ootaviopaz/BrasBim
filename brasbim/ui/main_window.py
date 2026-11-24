@@ -2940,21 +2940,28 @@ class MainWindow(QMainWindow):
         andamento (spec/ui 60)."""
         dialog = None
 
+        text = "Convertendo o arquivo para o IFC 4.3…"
+
         def progress(done: int, total: int) -> None:
             nonlocal dialog
             if dialog is None:
-                dialog = QProgressDialog("Convertendo o arquivo para o IFC 4.3…", "", 0,
-                                         100, self)
+                dialog = QProgressDialog(text, "", 0, 100, self)
                 dialog.setWindowTitle("Abrir")
                 dialog.setCancelButton(None)
                 dialog.setMinimumDuration(0)
                 dialog.setWindowModality(Qt.WindowModal)
+            dialog.setLabelText(text)
             dialog.setValue(int(100 * done / max(total, 1)))
             QApplication.processEvents()
 
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             self.session.open(path, progress)
+            # peças de outro programa: a geometria de todas, de uma vez (spec/ui 60 §3)
+            from brasbim.core import plan_foreign
+
+            text = "Preparando a geometria dos elementos de outro programa…"
+            plan_foreign.prepare(self.session.doc, progress)
             return True
         except (OSError, RuntimeError, OpError, NotImplementedError) as e:
             self.session.message(f"não foi possível abrir {path}: {e}", "recusa")

@@ -124,6 +124,14 @@ Aberta em 2026‑11‑12. Tudo o que for feito a partir desta data entra aqui.
 - Material **Couro** na biblioteca de cores.
 
 ### Correções
+- **IFC de outro programa: tudo aparece na planta e no 3D.** Paredes, escadas, rampas,
+  móveis, louças, fachadas‑cortina, montantes, painéis e peças genéricas que vêm de outro
+  programa (sem os dados do BrasBim) ficavam de fora. Agora aparecem pela geometria: na
+  planta, o que o plano de corte atravessa sai cortado (fundo e contorno grosso) e o que
+  está abaixo dele sai em vista, em linha fina; no 3D, todas as peças. A geometria é
+  preparada logo ao abrir, com uma janela de andamento, e a planta e o 3D usam a mesma.
+  Arquivos em milímetros, centímetros ou pés passam a ter as medidas convertidas para
+  metros ao abrir (antes, as alturas e o plano de corte não batiam). (spec/ui 60 §3)
 - **Abrir IFC 2x3 ou IFC 4** dava erro na planta (e o erro se repetia sem parar). Agora o
   arquivo é convertido para o IFC 4.3 ao abrir, com uma janela de andamento nos arquivos
   grandes; um aviso diz de que esquema veio, e Salvar pede um nome novo para não gravar
