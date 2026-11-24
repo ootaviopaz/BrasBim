@@ -91,6 +91,10 @@ class Mesh:
     parts: dict | None = None  # parede por camadas: {material: triângulos (n, 3, 3)}
     glass: np.ndarray | None = None  # triângulos translúcidos (vidro), (n, 3) float32
     glass_colors: np.ndarray | None = None  # (n, 4): RGBA
+    # Triângulos opacos sem a divisão por camadas (parede, laje): o contorno sai deles. Os
+    # pedaços das camadas emendam no meio das arestas uns dos outros e essas emendas
+    # pareceriam bordas (linhas da janela até o canto da parede, 2026-11-24).
+    outline: np.ndarray | None = None  # (n, 3) float32
     # Contas da apresentação (luz, contorno), feitas na primeira vez que o estilo pede
     cache: dict = field(default_factory=dict, repr=False, compare=False)
 
@@ -100,6 +104,21 @@ class Mesh:
         if self.glass is None:
             return self.vertices
         return np.concatenate([self.vertices, self.glass])
+
+    @property
+    def contour_vertices(self) -> np.ndarray:
+        """Triângulos de onde sai o contorno (sem as emendas das camadas)."""
+        if self.outline is None:
+            return self.all_vertices
+        return self.outline if self.glass is None else np.concatenate([self.outline,
+                                                                       self.glass])
+
+
+def _opaque_outline(found) -> np.ndarray | None:
+    """Contorno de várias malhas juntas: o de cada uma (só se alguma tem camadas)."""
+    if all(m.outline is None for m in found):
+        return None
+    return np.concatenate([m.outline if m.outline is not None else m.vertices for m in found])
 
 
 def _shaded(vertices: np.ndarray, color) -> np.ndarray:
@@ -190,7 +209,7 @@ def feature_edges(vertices: np.ndarray, angle: float = FEATURE_ANGLE):
 def contour_of(mesh: Mesh):
     """(vivas, lisas, normais) da malha (opacos e vidros), guardadas na malha."""
     if "contour" not in mesh.cache:
-        mesh.cache["contour"] = feature_edges(mesh.all_vertices)
+        mesh.cache["contour"] = feature_edges(mesh.contour_vertices)
     return mesh.cache["contour"]
 
 
@@ -381,7 +400,8 @@ class Scene:
             return None
         return Mesh(np.concatenate([m.vertices for m in found]),
                     np.concatenate([m.colors for m in found]),
-                    np.concatenate([m.edges for m in found]), found[0].base)
+                    np.concatenate([m.edges for m in found]), found[0].base,
+                    outline=_opaque_outline(found))
 
     def _stair_mesh(self, stair) -> Mesh | None:
         """Lances, patamares e guarda-corpos numa malha só, com a cor de cada peça."""
@@ -390,7 +410,8 @@ class Scene:
             return None
         return Mesh(np.concatenate([m.vertices for m in found]),
                     np.concatenate([m.colors for m in found]),
-                    np.concatenate([m.edges for m in found]), found[0].base)
+                    np.concatenate([m.edges for m in found]), found[0].base,
+                    outline=_opaque_outline(found))
 
     def _object_mesh(self, element) -> Mesh | None:
         found = [m for m in (self._single(e) for e in [element, *_all_parts(element)])
@@ -405,7 +426,8 @@ class Scene:
                     np.concatenate([m.colors for m in found]),
                     np.concatenate([m.edges for m in found]), found[0].base,
                     glass=np.concatenate(glass) if glass else None,
-                    glass_colors=np.concatenate(glass_colors) if glass else None)
+                    glass_colors=np.concatenate(glass_colors) if glass else None,
+                    outline=_opaque_outline(found))
 
     def _mesh(self, entity) -> Mesh | None:
         if entity.is_a("IfcRoof"):
@@ -473,7 +495,7 @@ class Scene:
             parts_tri.append(part.astype(np.float32).reshape(-1, 3))
             parts_color.append(_shaded(parts_tri[-1], c))
         return Mesh(np.concatenate(parts_tri), np.concatenate(parts_color), verts[edges], color,
-                    layered)
+                    layered, outline=tri.astype(np.float32).reshape(-1, 3))
 
     def _split(self, wall, tri: np.ndarray) -> dict | None:
         """Triângulos da parede por material, pelas regiões das camadas (as mesmas da
@@ -1077,7 +1099,14 @@ def _clip_mesh(mesh: Mesh, planes) -> Mesh | None:
         colors = np.concatenate([colors, np.tile(shade, (len(cap), 1))])
         edges = np.concatenate([edges.reshape(-1, 3),
                                 np.asarray(cap_edges, dtype=np.float32)])
-    return Mesh(vertices, colors, edges, mesh.base, None, glass, glass_colors)
+    outline = None
+    if mesh.outline is not None:  # o contorno recortado junto, com as tampas
+        cut, _ = _clip_polys(mesh.outline.reshape(-1, 3, 3).astype(np.float64),
+                             np.zeros((len(mesh.outline) // 3, 3, 1)), planes)
+        outline = cut.reshape(-1, 3).astype(np.float32)
+        if cap:
+            outline = np.concatenate([outline, np.asarray(cap, dtype=np.float32)])
+    return Mesh(vertices, colors, edges, mesh.base, None, glass, glass_colors, outline)
 
 
 def _cross2(ax, ay, bx, by):

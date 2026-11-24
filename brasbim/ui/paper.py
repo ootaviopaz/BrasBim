@@ -69,6 +69,7 @@ class _PlanPainter:
     tint = PlanView.tint
     _draw_region = PlanView._draw_region
     _draw_annotations = PlanView._draw_annotations
+    _draw_text = PlanView._draw_text
     _stroke_paths = PlanView._stroke_paths
     _draw_tags = PlanView._draw_tags
     _font = PlanView._font

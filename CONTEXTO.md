@@ -20,6 +20,14 @@ spec/ui 55 e 58).*
 > (`atalhos/teclado`). Pontos (a)–(d) da spec/ui 58 §6 esperam o revisor. Testes AJ07–AJ10,
 > AT01–AT07. **Testar no Windows de verdade:** Alt sozinho sobre a planta não abre mais
 > o menu; realce e cursor do conta‑gotas.
+> **Teste do revisor (2026‑11‑24, `docs/roteiro-teste-0.0.2.md`):** A, C, D, E, F
+> (Navegador), H ok. Corrigidos: janela de atalhos (`QDialog.Accepted`), fantasma do texto
+> da cota ao arrastar (pedido), linhas falsas no 3D das paredes por camadas
+> (`Mesh.outline`: contorno dos triângulos sem a divisão). **Pendentes:** cotas em vários
+> níveis pelo Assistente (proposta `spec/ui/59-cotas-em-niveis.md`, pontos (a)–(e) para o
+> revisor); forma livre (escultura e corte/fachada) ainda a aprimorar; pergunta sobre
+> rodar no navegador (respondida: transmitir com Xpra/noVNC, visualizador web ou versão
+> web; sem decisão).
 
 *Antes: 2026‑11‑23 (spec/ui 55–57 e 16 §4.4: estilo das cotas e textos, Localizar
 e substituir, conta‑gotas, cópia com Ctrl, barra Opções com a seleção, penas por

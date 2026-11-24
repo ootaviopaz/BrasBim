@@ -118,6 +118,9 @@ Aberta em 2026‑11‑12. Tudo o que for feito a partir desta data entra aqui.
 ### Correções
 - No Windows, apertar e soltar o **Alt** sobre a planta ou o 3D (para o conta‑gotas)
   levava o foco ao menu Arquivo, e a vista parava de receber as teclas até um novo Alt.
+- No 3D, as paredes com camadas mostravam linhas falsas, dos cantos das portas e janelas
+  até os cantos da parede (emendas internas da divisão por material). Agora só aparecem
+  as quinas de verdade, também com a caixa de corte.
 
 ## [0.0.1] — 2026‑11‑07
 
