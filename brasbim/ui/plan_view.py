@@ -794,35 +794,52 @@ class PlanView(QWidget, ToolInput, FrameHistory):
                 painter.drawPath(path)
             painter.restore()
             for text in prims.texts:
-                font = self._text_font(text)
-                if font is None:
-                    continue
                 if selected:
                     text_color = C["select"]
                 elif text.pen_no is not None:  # pena escolhida no texto (spec/ui 57)
                     text_color = self.tint(owner) or QColor(self.pens.number(text.pen_no).color)
                 else:
                     text_color = self._own(owner, text.color) if text.color else ink
-                painter.setPen(QPen(text_color))
-                painter.save()
-                painter.setFont(font)
-                painter.translate(self.to_screen(text.at))
-                angle, flipped = self.reading_angle(text.angle)
-                painter.rotate(-angle)
-                metrics = painter.fontMetrics()
-                width, height = metrics.horizontalAdvance(text.text), metrics.height()
-                halign = text.halign
-                if flipped:  # virado para ler: o texto ocupa o mesmo lugar do outro lado
-                    halign = {"left": "right", "right": "left"}.get(halign, halign)
-                x = {"left": 0.0, "center": -width / 2, "right": -width}[halign]
-                y = (0.0 if flipped else -height) if text.valign == "bottom" else -height / 2
-                painter.drawText(QRectF(x, y, width + 2, height), Qt.AlignLeft | Qt.AlignBottom,
-                                 text.text)
-                if text.fixed and self.show_fixed_marks:  # texto de cota que não acompanha
-                    mark = QPen(C["select"], 1, Qt.DashLine)
-                    painter.setPen(mark)
-                    painter.drawLine(QPointF(x, y + height + 1), QPointF(x + width, y + height + 1))
-                painter.restore()
+                self._draw_text(painter, text, text_color)
+
+    def _draw_text(self, painter: QPainter, text, color) -> None:
+        """Um texto de anotação na cor dada (fonte, ângulo de leitura e alinhamento)."""
+        font = self._text_font(text)
+        if font is None:
+            return
+        painter.setPen(QPen(color))
+        painter.save()
+        painter.setFont(font)
+        painter.translate(self.to_screen(text.at))
+        angle, flipped = self.reading_angle(text.angle)
+        painter.rotate(-angle)
+        metrics = painter.fontMetrics()
+        width, height = metrics.horizontalAdvance(text.text), metrics.height()
+        halign = text.halign
+        if flipped:  # virado para ler: o texto ocupa o mesmo lugar do outro lado
+            halign = {"left": "right", "right": "left"}.get(halign, halign)
+        x = {"left": 0.0, "center": -width / 2, "right": -width}[halign]
+        y = (0.0 if flipped else -height) if text.valign == "bottom" else -height / 2
+        painter.drawText(QRectF(x, y, width + 2, height), Qt.AlignLeft | Qt.AlignBottom,
+                         text.text)
+        if text.fixed and self.show_fixed_marks:  # texto de cota que não acompanha
+            painter.setPen(QPen(C["select"], 1, Qt.DashLine))
+            painter.drawLine(QPointF(x, y + height + 1), QPointF(x + width, y + height + 1))
+        painter.restore()
+
+    def _draw_ghost(self, painter: QPainter, prims) -> None:
+        """Fantasma de uma anotação (ex.: o texto da cota sendo levado, spec/ui 57 §4):
+        traços tracejados e textos na cor da pré-visualização."""
+        color = QColor(C["preview"])
+        painter.save()
+        painter.setTransform(self.world_transform(), True)
+        painter.setBrush(Qt.NoBrush)
+        for *_, path in self._stroke_paths(prims):
+            painter.setPen(QPen(color, 1.4 / self.scale, Qt.DashLine))
+            painter.drawPath(path)
+        painter.restore()
+        for text in prims.texts:
+            self._draw_text(painter, text, color)
 
     def element_at(self, pos) -> str | None:
         return self.ctx.plan.pick(self.to_world(pos), self.ctx.tol)
@@ -908,6 +925,9 @@ class PlanView(QWidget, ToolInput, FrameHistory):
 
     def _draw_tool(self, painter: QPainter) -> None:
         tool = self.toolbox.active
+        ghost = tool.ghost()
+        if ghost is not None:
+            self._draw_ghost(painter, ghost)
         for mark in tool.preview() + self.ctx.guide_marks():
             if mark.style == "gap":
                 painter.setPen(Qt.NoPen)

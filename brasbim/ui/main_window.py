@@ -2288,7 +2288,7 @@ class MainWindow(QMainWindow):
         if self.quiet_dialogs:  # testes: a janela fica aberta para o teste mexer
             self.shortcuts_dialog = dialog
             return False
-        if dialog.exec() != dialog.Accepted:
+        if dialog.exec() != QDialog.Accepted:
             return False
         self.save_shortcuts(dialog.changes())
         return True

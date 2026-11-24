@@ -57,7 +57,8 @@ Aberta em 2026‑11‑12. Tudo o que for feito a partir desta data entra aqui.
   elementos da ferramenta) e no painel Propriedades; copiar e o conta‑gotas levam as
   penas. (spec/ui 57)
 - **Mover só o texto da cota.** Cada número da cota tem uma alça: arrastar leva só o
-  texto, sem mexer na linha de cota; longe da linha, ganha uma linha de chamada.
+  texto, sem mexer na linha de cota; longe da linha, ganha uma linha de chamada. Enquanto
+  arrasta, um fantasma mostra onde o texto (e a linha de chamada) vai ficar ao soltar.
   "Textos de volta ao lugar" no painel. (spec/ui 57)
 - **Texto e marcador da cota.** Cada trecho da cota pode ter o texto trocado (na ficha ou
   com clique duplo no número): `<medida>` continua acompanhando o modelo

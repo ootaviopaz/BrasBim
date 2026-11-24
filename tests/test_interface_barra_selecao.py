@@ -195,3 +195,28 @@ def test_tc02_alca_do_texto_da_cota(window):
     assert base.build(s.doc, dim).strokes[0].points == line
     assert state["offset"] == pytest.approx(-0.6)
     assert dimensions.DIMENSION.optional  # (campo opcional da cota)
+
+
+def test_tc03_fantasma_do_texto_da_cota_ao_arrastar(window):
+    """Enquanto a alça do número é arrastada, o fantasma mostra onde o texto vai ficar
+    (pedido do revisor, 2026-11-24); ao soltar, ele some."""
+    s = window.session
+    s.run(lambda: ac.create_dimension(s.doc, s.storey, [(0, 0), (5, 0)], "fixed", 0.0, -0.6))
+    (dim,) = s.doc.ifc.by_type("IfcAnnotation")
+    window.activate_tool("select")
+    s.select([dim.GlobalId])
+    tool = window.toolbox.active
+    handle = next(q for w, which, q, _ in tool._all_handles() if which == "dim_text:0")
+    before = base.build(s.doc, dim).texts[0].at
+    tool.press(handle, Mods())
+    assert tool.ghost() is None  # só depois de começar a arrastar
+    tool.move((handle[0] + 1.0, handle[1] - 1.2), Mods())
+    ghost = tool.ghost()
+    assert ghost is not None
+    at = ghost.texts[0].at
+    assert (at[0] - before[0], at[1] - before[1]) == pytest.approx((1.0, -1.2), abs=1e-6)
+    assert base.build(s.doc, dim).texts[0].at == before  # o modelo ainda não mudou
+    window.plan.grab()  # desenha a planta com o fantasma (não pode dar erro)
+    tool.release((handle[0] + 1.0, handle[1] - 1.2), Mods())
+    assert tool.ghost() is None
+    assert base.build(s.doc, dim).texts[0].at == pytest.approx(at, abs=1e-6)

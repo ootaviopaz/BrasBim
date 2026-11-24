@@ -50,6 +50,10 @@ cor solta continuam abrindo e desenhando igual.
 - Texto levado para longe (mais que a altura dele) ganha uma linha de chamada até o
   lugar de origem.
 - Painel Propriedades: **Textos de volta ao lugar**.
+- **Fantasma** (pedido do revisor, 2026‑11‑24): enquanto a alça é arrastada, a planta
+  mostra na cor da pré‑visualização o texto no lugar novo e a linha de chamada que ele
+  terá; a linha de cota fica como está. Ao soltar, o fantasma vira o texto
+  (`SelectTool.ghost`, `PlanView._draw_ghost`; teste TC03).
 
 ## 5. Testes
 - **PE01** penas da parede no IFC e na planta (só a parede escolhida); tirar uma pena;

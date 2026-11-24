@@ -95,3 +95,27 @@ def test_at07_gravado_vale_ao_abrir(window, app, tmp_path):
         shortcuts.save(_settings(), {})
         other.session.modified = False
         other.close()
+
+
+def test_at08_ok_e_cancelar_pela_janela_de_verdade(window, monkeypatch):
+    """O caminho do menu, com a janela aberta como para o usuário (o erro de 24/11:
+    ``dialog.Accepted`` não existe no PySide6)."""
+    from PySide6.QtWidgets import QDialog
+
+    def fake_exec(answer):
+        def run(dialog):
+            dialog.assign("tool:wall", QKeySequence("Ctrl+Alt+W"))
+            return answer
+        return run
+
+    window.quiet_dialogs = False
+    try:
+        monkeypatch.setattr(shortcuts.ShortcutsDialog, "exec", fake_exec(QDialog.Rejected))
+        assert window.edit_shortcuts() is False  # Cancelar: nada muda
+        assert _action(window, "tool:wall").shortcuts() == []
+        monkeypatch.setattr(shortcuts.ShortcutsDialog, "exec", fake_exec(QDialog.Accepted))
+        assert window.edit_shortcuts() is True
+        assert _action(window, "tool:wall").shortcut().toString() == "Ctrl+Alt+W"
+    finally:
+        window.quiet_dialogs = True
+        window.save_shortcuts({})

@@ -10,6 +10,7 @@ aplicam pela sessão.
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import math
 import re
@@ -498,6 +499,10 @@ class Tool:
     def hint(self) -> str:
         return ""
 
+    def ghost(self):
+        """Primitivas (``prims.Prims``) a desenhar como fantasma, ou None."""
+        return
+
     def preview(self) -> list[Mark]:
         return []
 
@@ -946,6 +951,13 @@ class SelectTool(Tool):
         d = self.drag
         return bool(d and d["kind"] == "move" and d["active"] and d.get("copy"))
 
+    def ghost(self):
+        """O texto da cota no lugar novo enquanto a alça é arrastada (spec/ui 57 §4)."""
+        d = self.drag
+        if d and d["kind"] == "handle" and d["active"] and not d.get("error"):
+            return d.get("ghost")
+        return None
+
     def wants_number(self) -> bool:
         return self.drag3d is not None or bool(
             self.drag and self.drag["kind"] == "handle" and self.drag["active"])
@@ -1142,6 +1154,15 @@ class SelectTool(Tool):
                 moves.pop(str(index), None)
             else:
                 moves[str(index)] = [round(move[0], 6), round(move[1], 6)]
+            # fantasma enquanto arrasta: só o que muda (o texto no lugar novo e a linha
+            # de chamada); a linha de cota fica como está
+            moved = annotation_base.build_state(
+                doc, annotation_base.kind_of(element), doc.get(state["storey"]),
+                {**state, "text_moves": moves or None})
+            now = annotation_base.build(doc, element)
+            self.drag["ghost"] = dataclasses.replace(
+                moved, strokes=[k for k in moved.strokes if k not in now.strokes],
+                texts=[t for t in moved.texts if t not in now.texts])
             return (lambda: ac.edit_element(doc, gid, text_moves=moves or None), p, "")
         if which == "dim_offset":
             state = annotation_base.read_state(doc.get(gid))
