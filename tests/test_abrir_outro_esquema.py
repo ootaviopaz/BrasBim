@@ -4,7 +4,9 @@
 import ifcopenshell
 import ifcopenshell.api.aggregate
 import ifcopenshell.api.context
+import ifcopenshell.api.material
 import ifcopenshell.api.project
+import ifcopenshell.api.pset
 import ifcopenshell.api.root
 import ifcopenshell.api.spatial
 import ifcopenshell.api.type
@@ -121,6 +123,33 @@ def test_ao05_selecionar_parede_de_outro_programa(window):
     window.toolbox.activate("select")
     s.select([wall.GlobalId])
     assert window.options_bar._last_label == "Características no painel Propriedades"
+    # mini-barra e painel Propriedades também (relato de 2026-11-24 15:37)
+    from brasbim.ui.tools import selection_actions
+
+    actions = selection_actions(s.doc, {wall.GlobalId})
+    assert actions[:2] == ["move", "copy"] and not {"auto_dimension", "split"} & set(actions)
+    window.properties.refresh()
+    other = ifcopenshell.api.root.create_entity(ifc, ifc_class="IfcWall", name="SW - 210")
+    s.select([wall.GlobalId, other.GlobalId])  # várias: sem a seção de paredes
+    window.properties.refresh()
+
+
+def test_ao05b_parede_com_camadas_so_na_instancia(model):
+    """Parede de outro programa com eixo e camadas na própria parede (o tipo sem
+    IfcMaterialLayerSet): é lida pela espessura das camadas dela."""
+    from brasbim.core.walls.wall import is_parametric, read_state
+
+    wall = model.wall((0, 0), (4, 0))
+    ifc = model.doc.ifc
+    usage = ifcopenshell.util.element.get_material(wall, should_inherit=False)
+    wall_type = ifcopenshell.util.element.get_type(wall)
+    ifcopenshell.api.material.unassign_material(ifc, products=[wall_type])
+    for pset in ("BrasBim_Parede",):
+        found = ifcopenshell.util.element.get_pset(wall, pset)
+        if found:
+            ifcopenshell.api.pset.remove_pset(ifc, product=wall, pset=ifc.by_id(found["id"]))
+    assert usage.is_a("IfcMaterialLayerSetUsage")
+    assert read_state(model.doc, wall)["path"] and is_parametric(model.doc, wall)
 
 
 # --- peças de outro programa na planta e no 3D (spec/ui 60 §5) ----------------------------

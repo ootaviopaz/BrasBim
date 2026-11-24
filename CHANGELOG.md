@@ -124,6 +124,14 @@ Aberta em 2026‑11‑12. Tudo o que for feito a partir desta data entra aqui.
 - Material **Couro** na biblioteca de cores.
 
 ### Correções
+- **3D de projeto grande mais leve.** Com milhares de peças (um IFC de outro programa
+  inteiro), girar e aproximar o 3D travava: cada quadro mandava todas as malhas de novo
+  para a placa de vídeo. Agora a cena fica guardada na placa e é desenhada de uma vez;
+  no projeto de teste (3.786 peças), cada quadro caiu de 260 ms para 33 ms. Durante o
+  giro, as silhuetas das superfícies curvas ficam como no último quadro parado.
+- Selecionar uma **parede de outro programa** dava erro na mini‑barra da seleção e podia
+  dar no painel Propriedades. A parede com camadas só nela (e não no tipo) agora é lida
+  pelas camadas dela; a que é só malha fica sem as ações de parede.
 - **IFC de outro programa: tudo aparece na planta e no 3D.** Paredes, escadas, rampas,
   móveis, louças, fachadas‑cortina, montantes, painéis e peças genéricas que vêm de outro
   programa (sem os dados do BrasBim) ficavam de fora. Agora aparecem pela geometria: na

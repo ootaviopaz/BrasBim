@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import math
+from types import SimpleNamespace
 
 import ifcopenshell.util.element
 import ifcopenshell.util.placement
@@ -86,10 +87,11 @@ def display_layers_locked(doc) -> set[str]:
 
 def draw_scene(scene: Scene, camera: Camera, aspect: float, selected=frozenset(),
                hover: str | None = None, style: dict | None = None,
-               related=frozenset()) -> None:
+               related=frozenset(), navigating: bool = False) -> None:
     """Pinta as malhas (com os vidros por último) e as arestas no contexto OpenGL atual,
     conforme o estilo do 3D (spec/ui 43 §2): a vista na tela e a imagem da vista 3D salva
-    na prancha (spec/ui 25 §5)."""
+    na prancha (spec/ui 25 §5). ``navigating``: órbita ou zoom em curso (as silhuetas das
+    superfícies curvas ficam como no último quadro parado, nas cenas grandes)."""
     style = style or view_styles.get(None)
     _reset_state()
     GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
@@ -100,6 +102,12 @@ def draw_scene(scene: Scene, camera: Camera, aspect: float, selected=frozenset()
     GL.glEnableClientState(GL.GL_VERTEX_ARRAY)
     GL.glEnableClientState(GL.GL_COLOR_ARRAY)
     faces = style["faces"]
+    batch = _Batch.of(scene.meshes)
+    if batch is not None:  # muitas malhas: tudo de uma vez, guardado na placa de vídeo
+        batch.draw(style, camera, selected, hover, related, navigating)
+        GL.glDisableClientState(GL.GL_COLOR_ARRAY)
+        GL.glDisableClientState(GL.GL_VERTEX_ARRAY)
+        return
     if faces != "none":
         for gid, mesh in scene.meshes.items():
             if not len(mesh.vertices):
@@ -118,6 +126,153 @@ def draw_scene(scene: Scene, camera: Camera, aspect: float, selected=frozenset()
     GL.glDisableClientState(GL.GL_COLOR_ARRAY)
     _paint_edges(scene, camera, selected, style, related)
     GL.glDisableClientState(GL.GL_VERTEX_ARRAY)
+
+
+BATCH_MIN = 300  # a partir de quantas malhas a cena vai em lote (IFC grande)
+
+
+class _Batch:
+    """A cena inteira em poucos desenhos (spec/ui 60 §3: IFC de outro programa com
+    milhares de peças). Vértices, cores (por estilo) e arestas vivas ficam em buffers da
+    placa de vídeo, feitos de novo só quando a tabela de malhas muda (``version``); as
+    silhuetas das superfícies curvas são achadas de uma vez para a cena toda. Selecionado,
+    relacionado e sob o cursor são pintados de novo por cima, com a cor de destaque."""
+
+    def __init__(self, meshes):
+        self.version = meshes.version
+        self.order = [(gid, m) for gid, m in meshes.items() if len(m.vertices)]
+        self.count = sum(len(m.vertices) for _, m in self.order)
+        self.glass = [(gid, m) for gid, m in self.order if m.glass is not None]
+        self.buffers: dict = {}  # por contexto do OpenGL: {nome: (id, quantos)}
+        self._edges: dict = {}
+        self._rim = None
+        self._rim_eye = None
+
+    @staticmethod
+    def of(meshes):
+        from brasbim.ui.scene3d import MeshTable
+
+        if not isinstance(meshes, MeshTable) or len(meshes) < BATCH_MIN:
+            return None
+        found = getattr(meshes, "_batch", None)
+        if found is None or found.version != meshes.version:
+            if found is not None:
+                found.release()
+            found = _Batch(meshes)
+            meshes._batch = found
+        return found
+
+    def release(self) -> None:
+        """Apaga os buffers do contexto atual (os de outro contexto somem com ele)."""
+        mine = self.buffers.pop(self._context(), {})
+        ids = [b for b, _ in mine.values()]
+        if ids and GL is not None:
+            try:
+                GL.glDeleteBuffers(len(ids), ids)
+            except GLError:
+                pass
+
+    @staticmethod
+    def _context():
+        from PySide6.QtGui import QOpenGLContext
+
+        current = QOpenGLContext.currentContext()
+        return id(current) if current is not None else None
+
+    def _buffer(self, name: str, build):
+        mine = self.buffers.setdefault(self._context(), {})
+        if name not in mine:
+            data = np.ascontiguousarray(build(), dtype=np.float32)
+            buf = GL.glGenBuffers(1)
+            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, buf)
+            GL.glBufferData(GL.GL_ARRAY_BUFFER, data.nbytes, data, GL.GL_STATIC_DRAW)
+            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
+            mine[name] = (buf, len(data))
+        return mine[name]
+
+    def _hard(self, kind: str) -> np.ndarray:
+        if kind not in self._edges:
+            parts = []
+            for _, mesh in self.order:
+                hard = contour_of(mesh)[0]
+                if kind == "all" and len(mesh.edges):
+                    hard = mesh.edges
+                parts.append(np.asarray(hard, dtype=np.float32).reshape(-1, 3))
+            self._edges[kind] = np.concatenate(parts) if parts else np.zeros((0, 3))
+        return self._edges[kind]
+
+    def _smooth(self):
+        if "smooth" not in self._edges:
+            smooth = [contour_of(m)[1] for _, m in self.order]
+            normals = [contour_of(m)[2] for _, m in self.order]
+            self._edges["smooth"] = (
+                np.concatenate(smooth).astype(np.float32) if smooth else np.zeros((0, 2, 3)),
+                np.concatenate(normals).astype(np.float32) if normals else np.zeros((0, 2, 3)))
+        return self._edges["smooth"]
+
+    def draw(self, style, camera, selected, hover, related, navigating) -> None:
+        faces = style["faces"]
+        marked = [(gid, m, tone) for gid, m in self.order
+                  for tone in [_SELECT * 0.6 if gid in selected else
+                               _RELATED * 0.55 if gid in related else
+                               _SELECT * 0.25 if gid == hover else None]
+                  if tone is not None] if (selected or related or hover) else []
+        if faces != "none":
+            key = (faces, style["light"], style.get("face_color"))
+            vbuf, n = self._buffer("vertices", lambda: np.concatenate(
+                [m.vertices for _, m in self.order]))
+            cbuf, _ = self._buffer(f"colors{key}", lambda: np.concatenate(
+                [face_colors(m, style) for _, m in self.order]))
+            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, vbuf)
+            GL.glVertexPointer(3, GL.GL_FLOAT, 0, None)
+            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, cbuf)
+            GL.glColorPointer(3, GL.GL_FLOAT, 0, None)
+            GL.glDrawArrays(GL.GL_TRIANGLES, 0, n)
+            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
+            if marked:  # destaque por cima, na mesma profundidade
+                GL.glDepthFunc(GL.GL_LEQUAL)
+                for gid, mesh, tone in marked:
+                    mix = 0.4 if gid in selected else 0.45 if gid in related else 0.75
+                    colors = (face_colors(mesh, style) * mix + tone).astype(np.float32)
+                    GL.glVertexPointer(3, GL.GL_FLOAT, 0, mesh.vertices)
+                    GL.glColorPointer(3, GL.GL_FLOAT, 0, colors)
+                    GL.glDrawArrays(GL.GL_TRIANGLES, 0, len(mesh.vertices))
+                GL.glDepthFunc(GL.GL_LESS)
+            _paint_glass(SimpleNamespace(meshes=dict(self.glass)), selected, style)
+        GL.glDisableClientState(GL.GL_COLOR_ARRAY)
+        self._draw_edges(style, camera, selected, related, navigating)
+
+    def _draw_edges(self, style, camera, selected, related, navigating) -> None:
+        kind = style["edges"]
+        if kind == "none":
+            return
+        GL.glLineWidth(float(style["edge_width"]))
+        GL.glColor3f(*view_styles.rgb(style["edge_color"]))
+        hbuf, n = self._buffer(f"edges-{kind}", lambda: self._hard(kind))
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, hbuf)
+        GL.glVertexPointer(3, GL.GL_FLOAT, 0, None)
+        GL.glDrawArrays(GL.GL_LINES, 0, n)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
+        eye = tuple(np.round(np.asarray(camera.eye(), dtype=float), 6))
+        if self._rim is None or (not navigating and eye != self._rim_eye):
+            smooth, normals = self._smooth()
+            self._rim = np.ascontiguousarray(
+                silhouette_edges(smooth, normals, eye), dtype=np.float32)
+            self._rim_eye = eye
+        if len(self._rim):
+            GL.glVertexPointer(3, GL.GL_FLOAT, 0, self._rim)
+            GL.glDrawArrays(GL.GL_LINES, 0, len(self._rim))
+        if style["faces"] == "none" and (selected or related):  # destaque na linha
+            GL.glDepthFunc(GL.GL_LEQUAL)
+            for gid, mesh in self.order:
+                if gid in selected or gid in related:
+                    GL.glColor3f(*(_SELECT if gid in selected else _RELATED))
+                    lines = contour_of(mesh)[0]
+                    if len(lines):
+                        GL.glVertexPointer(3, GL.GL_FLOAT, 0, lines)
+                        GL.glDrawArrays(GL.GL_LINES, 0, len(lines))
+            GL.glDepthFunc(GL.GL_LESS)
+        GL.glLineWidth(1.0)
 
 
 def _reset_state() -> None:
@@ -443,7 +598,8 @@ class View3D(QOpenGLWidget, ToolInput):
         from brasbim.ui.solid_badge import partner_ids
 
         draw_scene(self.scene, self.camera, self.width() / max(self.height(), 1), selected,
-                   hover, view_styles.get(self.style_id), partner_ids(self))
+                   hover, view_styles.get(self.style_id), partner_ids(self),
+                   navigating=self.navigating)
         GL.glEnableClientState(GL.GL_VERTEX_ARRAY)
         self._paint_tool()
         self._paint_handles()

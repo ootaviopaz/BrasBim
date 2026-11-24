@@ -5948,7 +5948,9 @@ def selection_actions(doc, gids) -> list[str]:
     elements = [e for e in elements if e is not None]
     if not elements:
         return []
-    walls = [e for e in elements if e.is_a("IfcWall")]
+    from brasbim.core.walls.wall import is_parametric
+
+    walls = [e for e in elements if is_parametric(doc, e)]  # parede só malha: sem ações
     from brasbim.core.structure import skylights
 
     door_list = [e for e in elements if (e.is_a("IfcDoor") or e.is_a("IfcWindow"))

@@ -56,6 +56,16 @@ tem os dados do BrasBim, e o 3D só uma lista fixa de classes.
   vez, em paralelo, com a janela de andamento ("Preparando a geometria…"); a planta e o
   3D usam essa mesma reserva, refeita só para o elemento que muda (posição ou corpo). Na
   tela, as linhas em vista vão num traço só, sem as que estão fora da tela.
+- **3D de cena grande** (relato: "a vista 3D está travando"): a partir de 300 malhas, a
+  cena vai em lote (`view3d._Batch`): vértices, cores do estilo e arestas vivas em
+  buffers da placa de vídeo, refeitos só quando a tabela de malhas muda
+  (`scene3d.MeshTable.version`); silhuetas achadas para a cena toda de uma vez e, durante
+  órbita e zoom, mantidas as do último quadro parado; selecionado, relacionado e sob o
+  cursor pintados por cima, na mesma profundidade. Medido no arquivo do revisor: 260 →
+  33 ms por quadro.
+- **Seleção de parede só malha**: `walls.wall.is_parametric` decide se a parede tem as
+  ações e a ficha de parede (mini‑barra, painel Propriedades, Dividir); a parede de
+  outro programa com eixo e camadas só na instância é lida pela espessura delas.
 - **Limites**: sem hachura de material no corte (só fundo e contorno), linhas em vista
   sem remoção das escondidas umas pelas outras (só sob as partes cortadas), e o
   elemento não vira paramétrico.
@@ -67,7 +77,8 @@ tem os dados do BrasBim, e o 3D só uma lista fixa de classes.
 - **AO03** sessão: sem nome, modificado, aviso com o esquema, andamento chamado, original
   intacto.
 - **AO04** etiqueta de viga com contorno de 6 vértices.
-- **AO05** selecionar parede de outro programa: a barra Opções não quebra.
+- **AO05** selecionar parede de outro programa: a barra Opções, a mini‑barra e o painel
+  Propriedades não quebram; **AO05b** camadas só na instância.
 - **AO06** planta: parede de outro programa cortada (contorno, fundo), mesa em vista,
   montante acima do plano de fora, lance de escada respondendo pela escada.
 - **AO07** parede do BrasBim não vira malha.

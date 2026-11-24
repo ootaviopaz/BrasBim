@@ -2565,8 +2565,9 @@ class MainWindow(QMainWindow):
             self.delete_selection()
             return
         if key == "split":
-            walls = [g for g in session.selection
-                     if doc.find(g) is not None and doc.find(g).is_a("IfcWall")]
+            from brasbim.core.walls.wall import is_parametric
+
+            walls = [g for g in session.selection if is_parametric(doc, doc.find(g))]
             tool = self.toolbox.tools["split"]
             self.activate_tool("split")
             tool.only = set(walls) if len(walls) == 1 and len(session.selection) == 1 else None

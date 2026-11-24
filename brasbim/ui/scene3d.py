@@ -318,6 +318,45 @@ def _all_parts(element) -> list:
     return out
 
 
+class MeshTable(dict):
+    """Malhas da cena por GlobalId; ``version`` muda a cada alteração, para o desenho
+    refazer os lotes que junta para a placa de vídeo (``view3d._Batch``) só quando
+    preciso."""
+
+    version = 0
+
+    def _bump(self) -> None:
+        self.version += 1
+
+    def __setitem__(self, key, value) -> None:
+        super().__setitem__(key, value)
+        self._bump()
+
+    def __delitem__(self, key) -> None:
+        super().__delitem__(key)
+        self._bump()
+
+    def pop(self, *args):
+        self._bump()
+        return super().pop(*args)
+
+    def popitem(self):
+        self._bump()
+        return super().popitem()
+
+    def clear(self) -> None:
+        super().clear()
+        self._bump()
+
+    def update(self, *args, **kwargs) -> None:
+        super().update(*args, **kwargs)
+        self._bump()
+
+    def setdefault(self, key, default=None):
+        self._bump()
+        return super().setdefault(key, default)
+
+
 class Scene:
     """Malhas por GlobalId."""
 
@@ -326,7 +365,7 @@ class Scene:
 
     def __init__(self):
         self.doc = None  # Document: com ele, paredes com cor por camada (spec/ui 06 §5)
-        self._meshes: dict[str, Mesh] = {}
+        self._meshes: MeshTable = MeshTable()
         # Pedidos adiados (``defer_update``/``defer_load``): feitos na primeira leitura de
         # ``meshes``, isto é, quando alguém (a vista 3D na tela, a imagem da prancha, a
         # escolha por raio) precisa das malhas. Com o 3D fechado, editar não triangula.

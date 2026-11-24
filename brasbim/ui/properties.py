@@ -73,6 +73,7 @@ from brasbim.core.walls import openings, rebuild, roof_top, top
 from brasbim.core.walls import params as wall_params
 from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import common_defaults as wall_common_defaults
+from brasbim.core.walls.wall import is_parametric
 from brasbim.core.walls.wall import read_state as read_wall
 from brasbim.ui import icons, theme
 from brasbim.ui.tools import block_grid, fmt, fmt_len, parse_number
@@ -280,7 +281,7 @@ class PropertiesPanel(QScrollArea):
             self._table(active)
         elif len(selection) == 1 and tables.is_table(selection[0]):
             self._table(selection[0])
-        elif len(selection) == 1 and selection[0].is_a("IfcWall"):
+        elif len(selection) == 1 and is_parametric(self.session.doc, selection[0]):
             self._wall(selection[0])
         elif len(selection) == 1 and skylights.is_skylight(selection[0]):
             self._skylight(selection[0])
@@ -314,7 +315,7 @@ class PropertiesPanel(QScrollArea):
              "IfcRoof": self._roof}[selection[0].is_a()](selection[0])
         elif selection:
             self._title(f"{len(selection)} elementos selecionados")
-            walls = [e for e in selection if e.is_a("IfcWall")]
+            walls = [e for e in selection if is_parametric(self.session.doc, e)]
             door_list = [e for e in selection if e.is_a("IfcDoor")]
             window_list = [e for e in selection if e.is_a("IfcWindow")
                            and not skylights.is_skylight(e)]

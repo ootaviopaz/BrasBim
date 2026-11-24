@@ -48,7 +48,12 @@ spec/ui 55 e 58).*
 > `open_path`. Unidades: `ifc_upgrade.to_meters`. Testes AO06–AO09. No arquivo do
 > revisor (≈1 milhão de entidades): converter 2x3→4.3 ~2,5 min, mm→m ~1 min, geometria
 > ~1,5 min (só na primeira abertura salva em 4.3: ~1,5 min); planta 0,2–8 s, 3D 6,5 s.
-> **Pendente:** hachura do material no corte das peças de fora; linhas escondidas na vista.
+> **3D travando (mesmo dia):** `view3d._Batch` (VBOs por contexto, a partir de 300
+> malhas; `MeshTable.version` diz quando refazer), 260 → 33 ms por quadro no arquivo do
+> revisor; o 1º quadro ainda leva ~8 s (contornos das 3.786 malhas). Parede só malha:
+> `walls.wall.is_parametric` (mini‑barra, Propriedades, Dividir).
+> **Pendente:** hachura do material no corte das peças de fora; linhas escondidas na vista;
+> calcular os contornos do 3D na preparação ao abrir (1º quadro).
 
 *Antes: 2026‑11‑23 (spec/ui 55–57 e 16 §4.4: estilo das cotas e textos, Localizar
 e substituir, conta‑gotas, cópia com Ctrl, barra Opções com a seleção, penas por
