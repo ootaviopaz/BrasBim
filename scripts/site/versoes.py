@@ -6,7 +6,8 @@ Lê as versões **lançadas** (as que têm data; a "em desenvolvimento" fica de 
   ``site/index.html``: a seção "Novidades da versão X", com os títulos da última;
 - a data da última versão no ``<lastmod>`` de ``/versoes/`` em ``site/sitemap.xml``.
 
-O grupo **Interno** (só para quem desenvolve) não vai para o site.
+O grupo **Interno** (só para quem desenvolve) não vai para o site, nem os itens marcados
+com ``<!-- fora do site -->`` (no fim do item; no GitHub o comentário não aparece).
 
 Uso, na raiz do repositório:
     python scripts/site/versoes.py            # grava os arquivos
@@ -30,6 +31,7 @@ SITE = ROOT / "site"
 REPO = "https://github.com/ootaviopaz/BrasBim"
 START, END = "<!-- versoes:inicio -->", "<!-- versoes:fim -->"
 HIDDEN_GROUPS = {"Interno"}
+OFF_SITE = "<!-- fora do site -->"  # marca, no CHANGELOG, um item que o site não mostra
 HOME_ITEMS = 9  # títulos do grupo Novo mostrados na página inicial
 SHORT = 64  # tamanho máximo de um título na página inicial
 MONTHS = ("janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto",
@@ -43,6 +45,7 @@ _DATE = re.compile(r"^(\d{4})[-‑](\d{2})[-‑](\d{2})$")
 class Item:
     title: str | None  # texto em negrito do começo, sem o ponto final
     text: str  # markdown do item inteiro, numa linha só
+    on_site: bool = True  # False: marcado com OFF_SITE
 
     @property
     def summary(self) -> str:
@@ -77,8 +80,9 @@ class Version:
         return "v" + self.number
 
     def shown_groups(self) -> list[tuple[str, list[Item]]]:
-        return [(name, items) for name, items in self.groups
-                if name not in HIDDEN_GROUPS and items]
+        shown = [(name, [i for i in items if i.on_site]) for name, items in self.groups
+                 if name not in HIDDEN_GROUPS]
+        return [(name, items) for name, items in shown if items]
 
 
 def parse(text: str) -> list[Version]:
@@ -95,11 +99,12 @@ def parse(text: str) -> list[Version]:
         joined = " ".join(s.strip() for s in lines)
         lines.clear()
         if joined.startswith("- "):
-            body = joined[2:]
+            on_site = OFF_SITE not in joined
+            body = " ".join(joined[2:].replace(OFF_SITE, " ").split())
             m = re.match(r"\*\*(.+?)\*\*", body)
             title = m.group(1).strip().rstrip(".") if m else None
             if items is not None:
-                items.append(Item(title, body))
+                items.append(Item(title, body, on_site))
         elif items is None:
             current.intro.append(joined)
 

@@ -29,6 +29,7 @@ Aberta ontem.
 - **Busca no Navegador.** Um campo filtra
   a lista `<Navegador>`.
 - **Busca no Navegador.** Repetido de propósito.
+- Item que não vai ao site. <!-- fora do site -->
 ### Correções
 - No Windows, o Alt levava o foco ao menu. Agora não leva.
 ### Interno
@@ -67,6 +68,7 @@ def test_pagina_escapa_html_e_esconde_o_grupo_interno():
     assert "<strong>Busca no Navegador.</strong>" in page
     assert "Interno" not in page and "Só para quem desenvolve" not in page
     assert "Coisa futura" not in page
+    assert "não vai ao site" not in page and "fora do site" not in page
     assert 'id="v0.1.0-busca-no-navegador"' in page
     assert 'id="v0.1.0-busca-no-navegador-2"' in page  # âncoras únicas
     assert "25 de novembro de 2026" in page
@@ -77,6 +79,7 @@ def test_pagina_inicial_mostra_a_ultima_versao():
     assert "velho" not in index
     assert "Novidades da versão 0.1.0" in index
     assert 'href="versoes/#v0.1.0-busca-no-navegador"' in index
+    assert "Novo <span>2</span>" in index  # o item fora do site não conta
     assert index.startswith("<main>\n<!-- versoes:inicio -->") and index.endswith("</main>\n")
     assert "<lastmod>2026-11-25</lastmod>" in sitemap
 

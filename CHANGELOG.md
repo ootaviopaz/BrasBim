@@ -16,6 +16,7 @@ data entra aqui.
   versão lançada, e seção "Novidades da versão" na página inicial, antes de Baixar.
   As duas são geradas do `CHANGELOG.md` por `scripts/site/versoes.py` (rodar ao lançar;
   o teste `tests/test_site_versoes.py` acusa quando o site fica desatualizado).
+  Um item marcado com `<!-- fora do site -->` fica só no CHANGELOG.
 
 ## [0.0.2] — 2026‑11‑25
 
@@ -130,7 +131,7 @@ data entra aqui.
   esquadrias.
 - A prévia que o Assistente usa para conferir um objeto passou a respeitar a
   profundidade: peças de trás não aparecem mais por cima das da frente.
-- Material **Couro** na biblioteca de cores.
+- Material **Couro** na biblioteca de cores. <!-- fora do site -->
 
 ### Correções
 - **3D de projeto grande mais leve.** Com milhares de peças (um IFC de outro programa

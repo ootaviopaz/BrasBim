@@ -32,7 +32,8 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > "Novidades da versão" (`#versoes`, antes de Baixar; link "Versões" no menu e no rodapé)
 > saem do `CHANGELOG.md` por `scripts/site/versoes.py` (só versões com data; grupo Interno
 > fica de fora; bloco entre `<!-- versoes:inicio/fim -->` no `index.html`; `<lastmod>` de
-> `/versoes/` no sitemap; link no `llms.txt`). `tests/test_site_versoes.py` falha enquanto
+> `/versoes/` no sitemap; link no `llms.txt`). Item marcado com `<!-- fora do site -->` no
+> CHANGELOG não aparece no site (usado em "Material Couro", a pedido do revisor). `tests/test_site_versoes.py` falha enquanto
 > o site não estiver em dia com o CHANGELOG.
 >
 > **Como lançar uma versão (receita usada na 0.0.2):** (1) datar a seção no
