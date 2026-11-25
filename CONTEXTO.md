@@ -4,35 +4,47 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑25 (lançamento da 0.0.2; 0.0.3 aberta).*
+*Atualizado em 2026‑11‑25, fim do dia (0.0.2 lançada; notas de versão no site; 0.0.3 no
+`main`).*
 
-> **RETOMAR AQUI (2026‑11‑25): 0.0.2 LANÇADA.** O PR #4
-> (https://github.com/ootaviopaz/BrasBim/pull/4) juntou o ramo
-> `estilo-localizar-contagotas` ao `main` (merge `ae562d8`); etiqueta **`v0.0.2`** e
-> lançamento "BrasBim 0.0.2" (normal, "latest") com a seção 0.0.2 do `CHANGELOG.md` como
-> nota (itens numa linha só, mais um parágrafo de downloads). Antes: suíte com 1089
-> passaram, 4 pulados (Python 3.12, Windows 11) e `ruff` limpo (`scripts/site/forum_top.py`
-> corrigido, `09aaae7`). Site `brasbim.org` já diz 0.0.2 (README, `divulgacao/BRASBIM.md`,
-> `llms.txt`, `sitemap.xml` e modelo de problema também). **`.exe`** montado aqui com
-> `instalador/construir.py` (PyInstaller no `.venv` + Inno Setup 6 instalado pelo winget;
-> `--verificar` ok; ~100 MB) e anexado como `BrasBim-Windows-Setup.exe`; os **`.dmg`** são
-> anexados pelo `instalador-mac.yml` ao criar a etiqueta. Os três links
-> `releases/latest/download/<nome>` apontam para a v0.0.2.
-> **Ficaram para depois do lançamento** (eram pré‑requisitos e não foram feitos): o revisor
-> testar de novo o IFC grande (IFC2X3 em mm, ~1 milhão de entidades) e o 3D girando; itens
-> G4 e H3 do `docs/roteiro-teste-0.0.2.md`. Se aparecer problema, corrigir na 0.0.3.
-> **Notas de versão no site (mesmo dia, ramo `versao-0.0.3`):** `brasbim.org/versoes/` e
-> a seção "Novidades da versão" (`#versoes`) da página inicial saem do `CHANGELOG.md` por
-> `scripts/site/versoes.py` (só versões com data; grupo Interno fica de fora; bloco entre
-> `<!-- versoes:inicio/fim -->` no `index.html`; `<lastmod>` de `/versoes/` no sitemap).
-> **Ao lançar:** datar a seção, rodar `python scripts/site/versoes.py` e fazer commit;
-> `tests/test_site_versoes.py` falha enquanto o site não estiver em dia.
-> **0.0.3 aberta** no ramo `versao-0.0.3` (versão em `pyproject.toml`,
-> `brasbim/__init__.py`, `CLAUDE.md` e seção nova no topo do `CHANGELOG.md`); juntar ao
-> `main` por PR. Sem `gh` nesta máquina: PRs e lançamentos pelo navegador.
-> Para retomar num clone novo: `py -3.12 -m venv .venv` e
+> **RETOMAR AQUI (2026‑11‑25, fim do dia).** Tudo está no **`main`** (o trabalho é feito
+> nele ou em ramos a partir dele); versão em desenvolvimento: **0.0.3** (`pyproject.toml`,
+> `brasbim/__init__.py`, `CLAUDE.md`, seção no topo do `CHANGELOG.md`, ainda sem itens além
+> das notas de versão do site). Para retomar num clone novo: `py -3.12 -m venv .venv` e
 > `.venv\Scripts\python -m pip install -e ".[ui,dev]"`; testes com
-> `QT_QPA_PLATFORM=offscreen` + `pytest -q` (~6 min).
+> `QT_QPA_PLATFORM=offscreen` + `pytest -q` (~6 min; 1089 passaram, 4 pulados, em 25/11).
+> Sem `gh` nesta máquina: PRs e lançamentos pelo navegador (ou `git push` direto ao `main`
+> quando avança sem merge).
+>
+> **0.0.2 LANÇADA (2026‑11‑25).** PR #4 (https://github.com/ootaviopaz/BrasBim/pull/4)
+> juntou `estilo-localizar-contagotas` ao `main` (merge `ae562d8`); etiqueta **`v0.0.2`** e
+> lançamento "BrasBim 0.0.2" (normal, "latest"), com a seção 0.0.2 do `CHANGELOG.md` como
+> nota. Os três instaladores estão no lançamento e os links
+> `releases/latest/download/<nome>` do site apontam para a v0.0.2: `.exe` montado aqui
+> (`instalador/construir.py`; PyInstaller no `.venv` + Inno Setup 6 pelo winget;
+> `--verificar` ok; ~100 MB) e os dois `.dmg` pelo `instalador-mac.yml` (~20 min depois da
+> etiqueta). `ruff` corrigido em `scripts/site/forum_top.py` (`09aaae7`).
+> **Ficou para depois** (era pré‑requisito e não foi feito): o revisor testar de novo o IFC
+> grande (IFC2X3 em mm, ~1 milhão de entidades) e o 3D girando; itens G4 e H3 do
+> `docs/roteiro-teste-0.0.2.md`. Se aparecer problema, corrigir na 0.0.3.
+>
+> **Notas de versão no site (2026‑11‑25, no ar):** `brasbim.org/versoes/` e a seção
+> "Novidades da versão" (`#versoes`, antes de Baixar; link "Versões" no menu e no rodapé)
+> saem do `CHANGELOG.md` por `scripts/site/versoes.py` (só versões com data; grupo Interno
+> fica de fora; bloco entre `<!-- versoes:inicio/fim -->` no `index.html`; `<lastmod>` de
+> `/versoes/` no sitemap; link no `llms.txt`). `tests/test_site_versoes.py` falha enquanto
+> o site não estiver em dia com o CHANGELOG.
+>
+> **Como lançar uma versão (receita usada na 0.0.2):** (1) datar a seção no
+> `CHANGELOG.md`; (2) trocar "versão 0.0.x" no `README.md`, `site/index.html`,
+> `site/llms.txt`, `divulgacao/BRASBIM.md` e `.github/ISSUE_TEMPLATE/problema.yml`;
+> (3) `python scripts/site/versoes.py`; (4) commit e juntar ao `main` (o site publica
+> sozinho); (5) montar o `.exe` com `instalador/construir.py` **antes** de subir a versão;
+> (6) no navegador, Releases > Draft a new release: etiqueta `vX.Y.Z` no `main`, título
+> "BrasBim X.Y.Z", nota = seção do CHANGELOG com cada item numa linha só, anexar o `.exe`
+> como `BrasBim-Windows-Setup.exe`, **não** pré‑lançamento, "latest" marcado; (7) os
+> `.dmg` chegam sozinhos; (8) abrir a próxima versão (seção no CHANGELOG, `pyproject.toml`,
+> `brasbim/__init__.py`, `CLAUDE.md`).
 > **Pendências abertas:** hachura do material no corte das peças de outro programa;
 > linhas escondidas na vista dessas peças; contornos do 3D calculados na preparação ao
 > abrir (o 1º quadro do 3D do IFC grande leva ~8 s); acelerar a conversão mm→m (~1 min,
