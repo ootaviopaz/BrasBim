@@ -4,27 +4,29 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑24, fim do dia (conta‑gotas, atalhos, cotas em níveis, abrir IFC
-de outro programa e 3D em lote; spec/ui 55, 58, 59 e 60).*
+*Atualizado em 2026‑11‑25 (lançamento da 0.0.2; 0.0.3 aberta).*
 
-> **RETOMAR AQUI (2026‑11‑24, fim do dia).** A pasta local foi apagada pelo revisor; tudo
-> está no GitHub, no ramo **`estilo-localizar-contagotas`** (último commit antes desta
-> nota: `a15b766`), **ainda não juntado ao `main`**. Para retomar:
-> `git clone -b estilo-localizar-contagotas https://github.com/ootaviopaz/BrasBim.git`,
-> depois `py -3.12 -m venv .venv` e `.venv\Scripts\python -m pip install -e ".[ui,dev]"`.
-> Testes: `QT_QPA_PLATFORM=offscreen` + `pytest -q` → 1088 passaram, 4 pulados (~6 min).
-> Os diários de sessão (`feedback/diarios/`, fora do git) se perderam junto; nada deles
-> faz falta (o que importava está nas specs e no `CHANGELOG.md`).
-> **Próximos passos para lançar a 0.0.2:** (1) o revisor testar de novo a abertura do IFC
-> grande (IFC2X3 em mm, ~1 milhão de entidades: ~5 min para abrir, com andamento; salvar
-> em 4.3 com nome novo e reabrir fica em ~1,5 min) e o 3D (girar deve ficar fluido);
-> (2) itens G4 (IFC em outro programa) e H3 (instalador) do `docs/roteiro-teste-0.0.2.md`;
-> (3) pull request do ramo para o `main` — **aberto em 2026‑11‑25** (#4, "Versão 0.0.2",
-> https://github.com/ootaviopaz/BrasBim/pull/4),
-> com a suíte rodada antes (1089 passaram, 4 pulados, Python 3.12, Windows 11) e o
-> `ruff` limpo (corrigido `scripts/site/forum_top.py`, commit `09aaae7`); falta o CI
-> ficar verde e juntar depois dos itens (1) e (2); (4) trocar "em desenvolvimento" pela data no
-> `CHANGELOG.md`, gerar o .exe e criar a tag `v0.0.2` com o texto da versão como nota.
+> **RETOMAR AQUI (2026‑11‑25): 0.0.2 LANÇADA.** O PR #4
+> (https://github.com/ootaviopaz/BrasBim/pull/4) juntou o ramo
+> `estilo-localizar-contagotas` ao `main` (merge `ae562d8`); etiqueta **`v0.0.2`** e
+> lançamento "BrasBim 0.0.2" (normal, "latest") com a seção 0.0.2 do `CHANGELOG.md` como
+> nota (itens numa linha só, mais um parágrafo de downloads). Antes: suíte com 1089
+> passaram, 4 pulados (Python 3.12, Windows 11) e `ruff` limpo (`scripts/site/forum_top.py`
+> corrigido, `09aaae7`). Site `brasbim.org` já diz 0.0.2 (README, `divulgacao/BRASBIM.md`,
+> `llms.txt`, `sitemap.xml` e modelo de problema também). **`.exe`** montado aqui com
+> `instalador/construir.py` (PyInstaller no `.venv` + Inno Setup 6 instalado pelo winget;
+> `--verificar` ok; ~100 MB) e anexado como `BrasBim-Windows-Setup.exe`; os **`.dmg`** são
+> anexados pelo `instalador-mac.yml` ao criar a etiqueta. Os três links
+> `releases/latest/download/<nome>` apontam para a v0.0.2.
+> **Ficaram para depois do lançamento** (eram pré‑requisitos e não foram feitos): o revisor
+> testar de novo o IFC grande (IFC2X3 em mm, ~1 milhão de entidades) e o 3D girando; itens
+> G4 e H3 do `docs/roteiro-teste-0.0.2.md`. Se aparecer problema, corrigir na 0.0.3.
+> **0.0.3 aberta** no ramo `versao-0.0.3` (versão em `pyproject.toml`,
+> `brasbim/__init__.py`, `CLAUDE.md` e seção nova no topo do `CHANGELOG.md`); juntar ao
+> `main` por PR. Sem `gh` nesta máquina: PRs e lançamentos pelo navegador.
+> Para retomar num clone novo: `py -3.12 -m venv .venv` e
+> `.venv\Scripts\python -m pip install -e ".[ui,dev]"`; testes com
+> `QT_QPA_PLATFORM=offscreen` + `pytest -q` (~6 min).
 > **Pendências abertas:** hachura do material no corte das peças de outro programa;
 > linhas escondidas na vista dessas peças; contornos do 3D calculados na preparação ao
 > abrir (o 1º quadro do 3D do IFC grande leva ~8 s); acelerar a conversão mm→m (~1 min,

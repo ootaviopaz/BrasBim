@@ -27,7 +27,7 @@ Software BIM **open source** e **IFC‑nativo** (IFC 4.3 é o modelo de dados e 
 4. Estado atual, próximos passos e pendências: `CONTEXTO.md` (ler no início da sessão,
    atualizar ao fim de cada etapa).
 5. **Versões e notas de lançamento:** desde 2026‑11‑12 toda mudança entra na versão em
-   desenvolvimento (hoje **0.0.2**; `pyproject.toml` e `brasbim/__init__.py`). Cada
+   desenvolvimento (hoje **0.0.3**; `pyproject.toml` e `brasbim/__init__.py`). Cada
    recurso, melhoria ou correção ganha uma linha em `CHANGELOG.md`, na seção da versão em
    desenvolvimento, no mesmo commit. Ao publicar: trocar "em desenvolvimento" pela data,
    usar o texto como nota do lançamento (Releases) e abrir a próxima versão no topo.

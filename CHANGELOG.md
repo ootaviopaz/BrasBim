@@ -6,6 +6,11 @@ Ao publicar, o texto da versão vira a nota do lançamento no GitHub (Releases).
 
 Grupos: **Novo**, **Melhorias**, **Correções**, **Interno** (só para quem desenvolve).
 
+## [0.0.3] — em desenvolvimento
+
+Aberta em 2026‑11‑25, depois do lançamento da 0.0.2. Tudo o que for feito a partir desta
+data entra aqui.
+
 ## [0.0.2] — 2026‑11‑25
 
 ### Novo
