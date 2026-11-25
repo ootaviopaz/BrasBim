@@ -19,7 +19,8 @@ de outro programa e 3D em lote; spec/ui 55, 58, 59 e 60).*
 > grande (IFC2X3 em mm, ~1 milhão de entidades: ~5 min para abrir, com andamento; salvar
 > em 4.3 com nome novo e reabrir fica em ~1,5 min) e o 3D (girar deve ficar fluido);
 > (2) itens G4 (IFC em outro programa) e H3 (instalador) do `docs/roteiro-teste-0.0.2.md`;
-> (3) pull request do ramo para o `main` — **aberto em 2026‑11‑25** ("Versão 0.0.2"),
+> (3) pull request do ramo para o `main` — **aberto em 2026‑11‑25** (#4, "Versão 0.0.2",
+> https://github.com/ootaviopaz/BrasBim/pull/4),
 > com a suíte rodada antes (1089 passaram, 4 pulados, Python 3.12, Windows 11) e o
 > `ruff` limpo (corrigido `scripts/site/forum_top.py`, commit `09aaae7`); falta o CI
 > ficar verde e juntar depois dos itens (1) e (2); (4) trocar "em desenvolvimento" pela data no
