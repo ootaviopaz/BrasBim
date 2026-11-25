@@ -200,10 +200,14 @@ def _number(value: float, decimals: int, hide_zeros: bool) -> str:
     return text.replace(".", ",")
 
 
-def length(doc: Document | None, kind: str, value: float, signed: bool = False) -> str:
+def length(doc: Document | None, kind: str, value: float, signed: bool = False,
+           decimals: int | None = None) -> str:
     """Comprimento ``value`` (m) no texto do tipo ``kind``; ``signed`` põe "+"/"−"
-    (cota de nível e de elevação)."""
+    (cota de nível e de elevação); ``decimals``: casas próprias da cota (spec/ui 55
+    §2.1), no lugar das do projeto."""
     cfg = config(doc)[kind] if doc is not None else DEFAULTS[kind]
+    if decimals is not None:
+        cfg = {**cfg, "decimals": int(decimals)}
     symbol, factor = LENGTH_UNITS[cfg["unit"]]
     v = value * factor
     if signed:

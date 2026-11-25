@@ -16,9 +16,19 @@ class OpError(ValueError):
     """Operação inválida ou impossível no estado atual do modelo."""
 
 
+def of_type(ifc: ifcopenshell.file, name: str) -> list:
+    """``by_type`` que devolve lista vazia quando a classe não existe no esquema do arquivo
+    (um IFC2X3 aberto não tem, por exemplo, ``IfcGeographicElement``)."""
+    try:
+        return ifc.by_type(name)
+    except RuntimeError:
+        return []
+
+
 class Document:
     def __init__(self, ifc: ifcopenshell.file):
         self.ifc = ifc
+        self.converted_from: str | None = None  # esquema do arquivo aberto, se convertido
         self._body = self._axis = self._profile = self._plan_body = None
         # GlobalIds recalculados durante a transação em curso (ver ``ops.history.run``).
         self.changed: set[str] = set()
@@ -90,8 +100,19 @@ class Document:
         return doc
 
     @classmethod
-    def open(cls, path: str) -> Document:
-        return cls(ifcopenshell.open(path))
+    def open(cls, path: str, progress=None) -> Document:
+        """Abre o arquivo; IFC 2x3 e IFC 4 são convertidos para o 4.3 e as medidas em mm,
+        cm ou pés para metros. ``converted_from`` diz de onde veio ("IFC2X3, em
+        milímetros"), ou ``None`` (spec/ui 60)."""
+        from brasbim.core import ifc_upgrade
+
+        ifc, notes = ifc_upgrade.prepare(ifcopenshell.open(path), progress)
+        doc = cls(ifc)
+        if notes:
+            schema = [n for n in notes if n.startswith("IFC")]
+            unit = [f"em {n}" for n in notes if not n.startswith("IFC")]
+            doc.converted_from = ", ".join(schema + unit)
+        return doc
 
     def save(self, path: str) -> None:
         self.ifc.write(path)

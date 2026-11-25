@@ -67,7 +67,7 @@ operações com sólidos, elevação interna, detalhes e perspectiva na prancha.
 
 ## Estado
 
-O BrasBim está em **desenvolvimento ativo (versão 0.0.1)**. Ele já modela e documenta
+O BrasBim está em **desenvolvimento ativo (versão 0.0.2)**. Ele já modela e documenta
 uma casa, mas ainda não tem versão estável para download. É desenvolvido e testado no
 Windows; Linux e macOS são o objetivo, mas ainda não foram validados.
 

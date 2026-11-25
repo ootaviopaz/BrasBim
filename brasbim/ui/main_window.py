@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtCore import QPointF, QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QProgressDialog,
     QSplitter,
     QTabBar,
     QTabWidget,
@@ -57,7 +58,7 @@ from brasbim.core.fillings import commands as fc
 from brasbim.core.ops import Transaction
 from brasbim.core.structure import solids
 from brasbim.core.walls import commands as cmd
-from brasbim.ui import area_export, feedback, paper, saved_views_ui, theme
+from brasbim.ui import area_export, feedback, paper, saved_views_ui, shortcuts, theme
 from brasbim.ui.assistant import AssistantPanel
 from brasbim.ui.balloon import MessageBalloon
 from brasbim.ui.command_line import (
@@ -214,6 +215,38 @@ class _Pane(QWidget):
         self.layout().addWidget(view, 1)
 
 
+
+def load_tool_settings(tool, picked, doc) -> bool:
+    """Leva os ajustes pegos às opções da ``tool`` (conta-gotas, spec/ui 55 §4.1). Devolve
+    se algo foi levado."""
+    import copy
+
+    from brasbim.core import pick_settings as settings_core
+
+    holder = getattr(tool, "options", None) or tool
+    changed = False
+    for attr, value in settings_core.tool_changes(picked).items():
+        if hasattr(holder, attr):
+            setattr(holder, attr, value)
+            changed = True
+    type_gid = picked.values.get("type")
+    if picked.group in ("column", "beam") and type_gid and hasattr(holder, "shape"):
+        from brasbim.core.structure import types as st_types
+
+        element_type = doc.find(type_gid)
+        if element_type is not None:  # a seção vem do tipo (b × h, círculo ou perfil)
+            section = st_types.section(element_type)
+            holder.type = type_gid
+            holder.shape = section.get("shape", holder.shape)
+            for key in ("b", "h", "d", "profile"):
+                if key in section and hasattr(holder, key):
+                    setattr(holder, key, section[key])
+            changed = True
+    if picked.group.startswith("annotation:") and hasattr(tool, "style"):
+        tool.style = copy.deepcopy(picked.style) or None  # o estilo vale para as próximas
+        changed = True
+    return changed
+
 class MainWindow(QMainWindow):
 
     quiet_dialogs = False  # True nos testes: avisos só em Mensagens
@@ -243,6 +276,7 @@ class MainWindow(QMainWindow):
         self._build_docks()
         self._build_actions()
         self._build_status()
+        shortcuts.apply(self, shortcuts.load(_settings()))  # os do usuário (spec/ui 58)
         session.listeners.append(self._on_session)
         for view in (self.plan, self.view3d):
             self._hook_view(view)
@@ -274,6 +308,8 @@ class MainWindow(QMainWindow):
         view.tool_requested.connect(self.activate_tool)
         view.context_requested.connect(
             lambda gid, pos, v=view: self.show_context_menu(v, gid, pos))
+        if hasattr(view, "settings_clicked"):  # conta-gotas (spec/ui 55 §4.1)
+            view.settings_clicked.connect(self.settings_clicked)
         view.selection_bar = SelectionBar(view, self.run_selection_action)
         view.solid_badge = SolidBadge(view, lambda gid: self.session.select([gid]))
 
@@ -340,6 +376,7 @@ class MainWindow(QMainWindow):
         self.properties = PropertiesPanel(self.session, self.toolbox)
         self.properties.setMinimumWidth(310)
         self.properties.edit_type = self.edit_type
+        self.properties.pens_table = lambda: self.plan.pens  # penas da janela (spec/ui 57)
         self.properties.open_view = self.open_view
         self.properties.open_sheet = self.open_sheet
         self.properties.open_table = self.open_table
@@ -420,6 +457,8 @@ class MainWindow(QMainWindow):
         self._action(file_menu, "Salvar como", self.save_project_as, "Ctrl+Shift+S")
         file_menu.addSeparator()
         self._action(file_menu, "Importar desenho (DXF, DWG)", lambda: self.import_drawing())
+        self._action(file_menu, "Importar forma livre (OBJ, STL, GLB)",  # forma-livre.md §4.2
+                     lambda: self.import_freeform())
         self._action(file_menu, "Exportar PDF", lambda: self.export_pdf(), "Ctrl+P")
         self._action(file_menu, "Exportar tabela", lambda: self.export_table())
         self._action(file_menu, "Exportar IFC (2x3, 4)", lambda: self.export_ifc_dialog())
@@ -452,12 +491,20 @@ class MainWindow(QMainWindow):
         edit_menu.addSeparator()
         for key, text in (("move", "Mover"), ("copy", "Copiar"), ("rotate", "Girar"),
                           ("mirror", "Espelhar"), ("split", "Dividir")):
-            self._action(edit_menu, text, lambda _=False, k=key: self.run_selection_action(k))
+            # Ctrl+D: cópias até Esc, sem arrastar (spec/ui 55 §5)
+            self._action(edit_menu, text, lambda _=False, k=key: self.run_selection_action(k),
+                         "Ctrl+D" if key == "copy" else None)
         self.delete_action = self._action(edit_menu, "Excluir", self.delete_selection, "Del")
+        self._action(edit_menu, "Converter em forma livre",  # forma-livre.md §4.3
+                     lambda: self.convert_to_freeform())
         edit_menu.addSeparator()  # pacote de precisão (spec/ui 23)
         self._action(edit_menu, "Girar 90° à esquerda", lambda: self.rotate_quarter(1), "Ctrl+R")
         self._action(edit_menu, "Girar 90° à direita", lambda: self.rotate_quarter(-1),
                      "Ctrl+Shift+R")
+        self._action(edit_menu, "Localizar e substituir", self.open_find, "Ctrl+Shift+F")
+        # conta-gotas (spec/ui 55 §4): também Alt+clique e Ctrl+Alt+clique na planta
+        self._action(edit_menu, "Pegar ajustes", lambda: self.pick_settings())
+        self._action(edit_menu, "Aplicar ajustes", lambda: self.apply_settings())
         similar_menu = edit_menu.addMenu("Selecionar semelhantes")
         for key, text in select_similar.CRITERIA:
             self._action(similar_menu, text, lambda _=False, k=key: self.select_similar(k))
@@ -530,6 +577,8 @@ class MainWindow(QMainWindow):
                                                 lambda: self.show_in_plan(), "Ctrl+Shift+P")
         self.show_in_3d_action = self._action(view_menu, "Mostrar no 3D", self.show_in_3d,
                                               "Ctrl+Shift+3")
+        self._action(view_menu, "Buscar no Navegador", self.find_in_navigator,  # spec/ui 53
+                     "Ctrl+F")
         self._action(view_menu, "Fechar aba", lambda: self.close_tab(),  # spec/ui 32 §3
                      ["Ctrl+W", "Ctrl+F4"])
         self._action(view_menu, "Fechar todas as abas", lambda: self.close_tabs())
@@ -633,6 +682,8 @@ class MainWindow(QMainWindow):
         self._action(project_menu, "Perfil municipal", lambda: self.edit_municipal())
         self._action(project_menu, "Unidades do projeto", lambda: self.edit_units())
         project_menu.addSeparator()
+        self._action(project_menu, "Cotar pavimento", lambda: self.dimension_storey())
+        project_menu.addSeparator()
         self._action(project_menu, "Biblioteca de objetos", self.show_library)
         self._action(project_menu, "Novo objeto", lambda: self.new_object())
         self._action(project_menu, "Pastas da biblioteca", self.edit_library_folders)
@@ -656,6 +707,8 @@ class MainWindow(QMainWindow):
         team_menu.addSeparator()
         self.leave_action = self._action(team_menu, "Sair do projeto compartilhado",
                                          self.leave_shared)
+        prefs_menu = bar.addMenu("Pre&ferências")  # spec/ui 58
+        self._action(prefs_menu, "Atalhos de teclado", self.edit_shortcuts)
         help_menu = bar.addMenu("A&juda")
         self._action(help_menu, "Registrar observação", self.register_note)
         self._action(help_menu, "Sobre", self.about)
@@ -1001,6 +1054,8 @@ class MainWindow(QMainWindow):
             self._refresh_all()
         elif event == "selection":
             self.properties.refresh()
+            if self.toolbox.active.name == "select":  # barra com a seleção (spec/ui 56)
+                self.options_bar.show_for(self.toolbox.active)
             for view in self.section_views.values():
                 view.update()
             self.plan.update()
@@ -2230,6 +2285,59 @@ class MainWindow(QMainWindow):
         self.command_line.setVisible(bool(visible))
         self.hint.setVisible(not visible)
 
+    def dimension_storey(self, levels=None, sides=None) -> bool:
+        """Projeto > Cotar pavimento: cotas em níveis do pavimento ativo (spec/ui 59).
+        Com ``levels`` e ``sides``, sem a janela."""
+        from brasbim.core.annotations import dimension_levels as levels_core
+
+        session = self.session
+        storey = session.storey
+        if storey is None:
+            session.message("escolha um pavimento para cotar", "recusa")
+            return False
+        if levels is None:
+            from brasbim.ui.dimension_levels_dialog import DimensionLevelsDialog
+
+            dialog = DimensionLevelsDialog(self, storey.Name or "")
+            if self.quiet_dialogs:  # testes: a janela fica aberta para o teste mexer
+                self.dimension_dialog = dialog
+                return False
+            if dialog.exec() != QDialog.Accepted:
+                return False
+            levels, sides = dialog.chosen_levels(), dialog.chosen_sides()
+        result = {}
+
+        def build():
+            tx, result["found"] = levels_core.create(session.doc, storey, levels,
+                                                     sides or levels_core.SIDES)
+            return tx
+
+        if not session.run(build):
+            return False
+        found = result["found"]
+        text = f"Cotas do pavimento: {len(found['create'])} linhas"
+        if found["kept"]:
+            text += f"; {len(found['kept'])} mexidas à mão ficaram"
+        if found["skipped"]:
+            text += f"; {len(found['skipped'])} puladas"
+        session.message(text)
+        return True
+
+    def edit_shortcuts(self) -> bool:
+        """Preferências > Atalhos de teclado (spec/ui 58)."""
+        dialog = shortcuts.ShortcutsDialog(self, shortcuts.entries(self))
+        if self.quiet_dialogs:  # testes: a janela fica aberta para o teste mexer
+            self.shortcuts_dialog = dialog
+            return False
+        if dialog.exec() != QDialog.Accepted:
+            return False
+        self.save_shortcuts(dialog.changes())
+        return True
+
+    def save_shortcuts(self, changes: dict) -> None:
+        shortcuts.apply(self, changes)
+        shortcuts.save(_settings(), changes)
+
     def edit_aliases(self) -> bool:
         from brasbim.ui import command_palette
 
@@ -2253,6 +2361,91 @@ class MainWindow(QMainWindow):
         self.plan.update()
         self.view3d.update()
         (self.ctx.input_view or self.plan).setFocus()
+
+    def open_find(self) -> None:
+        """Editar > Localizar e substituir (Ctrl+Shift+F), janela não modal (spec/ui 55 §3)."""
+        from brasbim.ui.find_dialog import FindDialog
+
+        dialog = getattr(self, "find_dialog", None)
+        if dialog is None or dialog.session is not self.session:
+            dialog = self.find_dialog = FindDialog(self.session, self)
+        else:
+            dialog.refresh_saved()
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+    # --- conta-gotas (spec/ui 55 §4) ---------------------------------------------------
+
+    def settings_clicked(self, gid: str, apply: bool) -> None:
+        """Alt+clique pega; Ctrl+Alt+clique aplica. Num elemento que faz parte da seleção,
+        aplica em todos os selecionados (spec/ui 55 §4.1)."""
+        if not apply:
+            self.pick_settings(gid)
+            return
+        selection = self.session.selection
+        self.apply_settings(sorted(selection) if gid in selection and len(selection) > 1
+                            else [gid])
+
+    def pick_settings(self, gid: str | None = None) -> None:
+        """Pega os ajustes do elemento (Alt+clique ou Editar > Pegar ajustes). Eles passam
+        a valer para as ferramentas que criam esse elemento, esteja ou não uma delas ativa:
+        os próximos saem iguais."""
+        from brasbim.core import pick_settings as settings_core
+
+        session = self.session
+        if gid is None:
+            if len(session.selection) != 1:
+                session.message("selecione um elemento para pegar os ajustes dele", "recusa")
+                return
+            gid = next(iter(session.selection))
+        element = session.doc.find(gid)
+        try:
+            picked = settings_core.pick(session.doc, element)
+        except OpError as e:
+            session.message(str(e), "recusa")
+            return
+        self.ctx.picked = picked
+        if not isinstance(getattr(self.ctx, "picked_by_group", None), dict):
+            self.ctx.picked_by_group = {}
+        self.ctx.picked_by_group[picked.group] = picked
+        loaded = [self.toolbox.tools[name] for name in settings_core.tools_for(picked.group)
+                  if name in self.toolbox.tools
+                  and load_tool_settings(self.toolbox.tools[name], picked, session.doc)]
+        active = self.toolbox.active
+        if active in loaded:
+            self.options_bar.show_for(active)
+        text = f"Ajustes pegos: {picked.label}"
+        if loaded:
+            text += f" (valem para a ferramenta {loaded[0].label})"
+        text += "; Ctrl+Alt+clique ou Aplicar ajustes leva a outros elementos"
+        session.message(text)
+        self._set_hint(text)
+
+    def apply_settings(self, gids=None) -> None:
+        """Aplica os ajustes pegos (Ctrl+Alt+clique ou Aplicar ajustes na seleção). Cada
+        alvo recebe os últimos pegos da classe dele."""
+        from brasbim.core import pick_settings as settings_core
+
+        session = self.session
+        picked = getattr(self.ctx, "picked", None)
+        if picked is None:
+            session.message("pegue os ajustes antes: Alt+clique num elemento", "recusa")
+            return
+        gids = sorted(session.selection) if gids is None else list(gids)
+        targets = [e for e in (session.doc.find(g) for g in gids) if e is not None]
+        if not targets:
+            session.message("selecione os elementos que recebem os ajustes", "recusa")
+            return
+        try:
+            edit_state.ensure_unlocked(session.doc, [t.GlobalId for t in targets])
+        except OpError as e:
+            session.message(str(e), "recusa")
+            return
+        by_group = getattr(self.ctx, "picked_by_group", None)
+        by_group = by_group if isinstance(by_group, dict) else None
+        session.run(lambda: settings_core.apply(session.doc, picked, targets, by_group))
+        self.properties.refresh()
 
     def remove_selection_area(self) -> None:
         """Editar > Remover área de seleção (spec/ui 38 §2)."""
@@ -2372,8 +2565,9 @@ class MainWindow(QMainWindow):
             self.delete_selection()
             return
         if key == "split":
-            walls = [g for g in session.selection
-                     if doc.find(g) is not None and doc.find(g).is_a("IfcWall")]
+            from brasbim.core.walls.wall import is_parametric
+
+            walls = [g for g in session.selection if is_parametric(doc, doc.find(g))]
             tool = self.toolbox.tools["split"]
             self.activate_tool("split")
             tool.only = set(walls) if len(walls) == 1 and len(session.selection) == 1 else None
@@ -2404,6 +2598,12 @@ class MainWindow(QMainWindow):
             return
         if key == "hide":
             self.hide_selection()
+            return
+        if key == "pick_settings":  # conta-gotas (spec/ui 55 §4.1)
+            self.pick_settings()
+            return
+        if key == "apply_settings":
+            self.apply_settings()
             return
         if key in ("swap_type", "edit_object_type", "detach"):
             self._object_action(key)
@@ -2622,6 +2822,82 @@ class MainWindow(QMainWindow):
         self._bring(self.plan)
         return self.plan.frame_selection()
 
+    # --- forma livre (spec/elementos/forma-livre.md §4.2 e §4.3) ----------------------------
+
+    def import_freeform(self, path: str | None = None, choose=None) -> str | None:
+        """Arquivo > Importar forma livre: lê OBJ, STL ou GLB e põe a peça no meio da
+        planta, selecionada (para mover ao lugar). ``choose``: substitui o diálogo
+        (testes); devolve o GlobalId da peça criada."""
+        from brasbim.core.freeform import commands as fc
+        from brasbim.core.freeform import importer, shapes
+        from brasbim.ui.freeform_dialog import FreeformImportDialog
+
+        session = self.session
+        if session.storey is None:
+            session.message("não há pavimento ativo", "recusa")
+            return None
+        if path is None:
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Importar forma livre", "",
+                "Malhas (*.obj *.stl *.glb);;OBJ (*.obj);;STL (*.stl);;GLB (*.glb)")
+            if not path:
+                return None
+        if choose is None:
+            dialog = FreeformImportDialog(path, self)
+            if dialog.exec() != QDialog.Accepted:
+                return None
+            choice = dialog.choice()
+        else:
+            choice = choose
+        try:
+            parts, info = importer.read(path, choice.get("unit", "m"), choice.get("up"),
+                                        shapes.MAX_TRIANGLES)
+        except OpError as e:
+            session.message(str(e), "recusa")
+            return None
+        at = self.plan.to_world(QPointF(self.plan.width() / 2, self.plan.height() / 2))
+        doc = session.doc
+        tx = fc.create(doc, session.storey, parts, at,
+                       name=choice.get("name") or Path(path).stem,
+                       category=choice.get("category", "proxy"),
+                       source=f"arquivo {Path(path).name}")
+        if not session.run(tx):
+            return None
+        gid = tx.ops[-1].id
+        session.select([gid])
+        text = f"forma livre importada com {info['kept']} triângulos"
+        if info["kept"] < info["triangles"]:
+            text += f" (o arquivo tinha {info['triangles']}: a malha foi simplificada)"
+        session.message(text + "; mova para o lugar")
+        return gid
+
+    def convert_to_freeform(self) -> str | None:
+        """Editar > Converter em forma livre: os objetos e formas livres selecionados viram
+        uma forma livre só."""
+        from brasbim.core.freeform import commands as fc
+
+        session = self.session
+        if not session.selection:
+            session.message("selecione objetos ou formas livres para converter", "recusa")
+            return None
+        doc = session.doc
+        try:
+            tx = fc.convert(doc, sorted(session.selection))
+        except OpError as e:
+            session.message(str(e), "recusa")
+            return None
+        if not session.run(tx):
+            return None
+        gid = tx.ops[-1].id
+        session.select([gid])
+        return gid
+
+    def find_in_navigator(self) -> None:
+        """Ctrl+F (spec/ui 53 §2): mostra o Navegador e põe o cursor no campo de busca."""
+        self.project_dock.show()
+        self.project_dock.raise_()
+        self.project.focus_search()
+
     def show_in_3d(self) -> bool:
         """3D à frente, com a órbita na seleção e a mesma direção da câmera."""
         if not self.session.selection:
@@ -2658,10 +2934,43 @@ class MainWindow(QMainWindow):
             self.import_drawing(path)
             return
         if path and self._ask_save():
-            try:
-                self.session.open(path)
-            except (OSError, RuntimeError, OpError) as e:
-                self.session.message(f"não foi possível abrir {path}: {e}", "recusa")
+            self.open_path(path)
+
+    def open_path(self, path: str) -> bool:
+        """Abre o projeto; um IFC 2x3 ou 4 é convertido para o 4.3 com uma janela de
+        andamento (spec/ui 60)."""
+        dialog = None
+
+        text = "Convertendo o arquivo para o IFC 4.3…"
+
+        def progress(done: int, total: int) -> None:
+            nonlocal dialog
+            if dialog is None:
+                dialog = QProgressDialog(text, "", 0, 100, self)
+                dialog.setWindowTitle("Abrir")
+                dialog.setCancelButton(None)
+                dialog.setMinimumDuration(0)
+                dialog.setWindowModality(Qt.WindowModal)
+            dialog.setLabelText(text)
+            dialog.setValue(int(100 * done / max(total, 1)))
+            QApplication.processEvents()
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            self.session.open(path, progress)
+            # peças de outro programa: a geometria de todas, de uma vez (spec/ui 60 §3)
+            from brasbim.core import plan_foreign
+
+            text = "Preparando a geometria dos elementos de outro programa…"
+            plan_foreign.prepare(self.session.doc, progress)
+            return True
+        except (OSError, RuntimeError, OpError, NotImplementedError) as e:
+            self.session.message(f"não foi possível abrir {path}: {e}", "recusa")
+            return False
+        finally:
+            QApplication.restoreOverrideCursor()
+            if dialog is not None:
+                dialog.close()
 
     # --- importar desenho (spec/ui 22) ---------------------------------------------------
 

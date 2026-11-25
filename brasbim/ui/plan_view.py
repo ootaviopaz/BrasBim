@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
+import numpy as np
+from PySide6.QtCore import QLineF, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -195,6 +196,9 @@ class PlanView(QWidget, ToolInput, FrameHistory):
     tool_options_changed = Signal()
     tool_requested = Signal(str)  # Enter repete a última ferramenta (spec/ui 23 §3.2)
     context_requested = Signal(object, object)  # (GlobalId ou None, posição global)
+    # Conta-gotas (spec/ui 55 §4.1): (GlobalId, aplicar?) — Alt+clique pega,
+    # Ctrl+Alt+clique aplica.
+    settings_clicked = Signal(str, bool)
     object_dropped = Signal(str, float, float)  # objeto arrastado da biblioteca, ponto
 
     def __init__(self, toolbox: ToolBox, parent=None):
@@ -217,6 +221,7 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         self.show_space_numbers = False  # número antes do nome do ambiente (spec/ui 13 §3.4)
         self.show_weights = True  # espessuras de linha do papel (spec/ui 13 §8)
         self.show_view_symbols = True  # símbolos de corte e fachada (spec/ui 14 §7)
+        self.show_fixed_marks = True  # texto de cota fixo sublinhado (spec/ui 55 §2.2)
         self.pens = pens.DEFAULT  # tabela de penas da janela (spec/ui 27)
         # Unidades do desenho por pixel de tela: 1 na tela; dpi/96 no papel (spec/ui 15).
         self.unit = 1.0
@@ -446,6 +451,20 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         found = self.ctx.plan.colors.get(owner)
         return QColor(found) if found else None
 
+    def _element_pen(self, owner, which: str):
+        """Pena escolhida no elemento (``cut``, ``fill``, ``view``; spec/ui 57) ou None."""
+        number = self.ctx.plan.element_pens.get(owner, {}).get(which) \
+            if hasattr(self.ctx.plan, "element_pens") else None
+        return self.pens.number(number) if number is not None else None
+
+    def _pen_no(self, number: int):
+        """Pena da tabela da janela (anotação com pena, spec/ui 57)."""
+        return self.pens.number(number)
+
+    def _own(self, owner, color: str) -> QColor:
+        """Cor própria da anotação (spec/ui 55 §2.1); a da situação ainda vence."""
+        return self.tint(owner) or QColor(self.pens.own(color))
+
     def _rings_path(self, rings) -> QPainterPath:
         path = QPainterPath()
         path.setFillRule(Qt.OddEvenFill)
@@ -472,19 +491,29 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         for rings in floors.values():
             painter.fillPath(self._rings_path(rings).subtracted(holes), C["background"])
         rest = []
+        batched = self._draw_foreign_view(painter, plan, selection)
         for shape in plan.shapes:
             role = shape.role
+            if role == "foreign_view" and shape.owner in batched:
+                continue
             if role in _OBJECT_ROLES:  # mobiliário e equipamentos: sob as paredes cortadas
                 self._draw_object(painter, shape, shape.owner in selection)
                 continue
             if role not in ("below", "wall_above", "wall_view", "slab_view", "slab_above",
-                            "slab_opening", "slab_opening_x"):
+                            "slab_opening", "slab_opening_x", "foreign_view"):
                 rest.append(shape)
                 continue
             selected = shape.owner in selection
             pens_ = self.pens
             tint = self.tint(shape.owner)
-            if role == "below":
+            own = self._element_pen(shape.owner, "view")  # spec/ui 57
+            if own is not None and role != "below":
+                pen = QPen(C["select"] if selected else tint or QColor(own.color),
+                           2 * self.unit if selected else max(self.unit,
+                                                              self._px(own.weight / 1000.0)),
+                           Qt.DashLine if role in ("wall_above", "slab_above")
+                           else Qt.SolidLine)
+            elif role == "below":
                 pen = QPen(QColor(pens_.color("below")),
                            max(self.unit, self._px(pens_.weight("below", BELOW_WEIGHT))),
                            Qt.DashLine)
@@ -511,15 +540,24 @@ class PlanView(QWidget, ToolInput, FrameHistory):
                         "line_color": pens.INK, "source": "situation",
                         "spacing": SITUATION_HATCH_SPACING,
                         "background": pens.INK if pattern == "solid" else None}
+            elif region.pen_no is not None:  # pena da hachura do elemento (spec/ui 57)
+                color = self.pens.number(region.pen_no).color
+                fill = {**fill, "line_color": color,
+                        "background": color if fill.get("background") else None}
+            elif fill.get("pen_no") is not None:  # seta/ponto da cota com pena (spec/ui 57)
+                fill = {**fill, "background": self.pens.number(fill["pen_no"]).color}
             self._draw_region(painter, self._rings_path(region.rings), fill)
         painter.setBrush(Qt.NoBrush)
         for edge in plan.edges:
             color = edge.color if edge.color.upper() not in pens.NEUTRAL \
                 else self.pens.color(edge.pen)
+            width = self.pens.weight(edge.pen, edge.weight)
+            if edge.pen_no is not None:  # pena do contorno do elemento (spec/ui 57)
+                own = self.pens.number(edge.pen_no)
+                color, width = own.color, own.weight / 1000.0
             if edge.tint and not black:
                 color = edge.tint
-            painter.setPen(QPen(QColor(color), max(self.unit, self._px(
-                self.pens.weight(edge.pen, edge.weight)))))
+            painter.setPen(QPen(QColor(color), max(self.unit, self._px(width))))
             painter.drawPath(self._rings_path(edge.rings))
         for shape in rest:
             role = shape.role
@@ -538,7 +576,8 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             if role in ("plant", "plant_fill"):  # vegetação: por cima das paredes
                 self._draw_object(painter, shape, selected)
                 continue
-            if role in ("wall", "column", "beam", "slab", "space", "roof", "covering"):
+            if role in ("wall", "column", "beam", "slab", "space", "roof", "covering",
+                        "foreign"):
                 # O desenho vem das regiões (cortados) ou das linhas da vista: aqui só o
                 # destaque da seleção.
                 if not selected:
@@ -550,32 +589,79 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             elif role in ("column_view", "beam_view", "column_above", "beam_above"):
                 above = role.endswith("above")
                 category = "above" if above else "view"
+                own = self._element_pen(shape.owner, "view")
+                weight = (own.weight / 1000.0 if own is not None else
+                          self.pens.weight(category, ABOVE_WEIGHT if above else VIEW_WEIGHT))
                 painter.setPen(QPen(
                     C["select"] if selected else self.tint(shape.owner)
-                    or QColor(self.pens.color(category)),
-                    2 * self.unit if selected else max(self.unit, self._px(self.pens.weight(
-                        category, ABOVE_WEIGHT if above else VIEW_WEIGHT))),
+                    or QColor(own.color if own is not None else self.pens.color(category)),
+                    2 * self.unit if selected else max(self.unit, self._px(weight)),
                     Qt.DashLine if above else Qt.SolidLine))
                 painter.setBrush(Qt.NoBrush)
             else:
                 thin = role in ("door_swing", "window_sash", "window_glass")
                 category = "swing" if role == "door_swing" else "opening"
+                own = self._element_pen(shape.owner, "cut")  # pena da esquadria (spec/ui 57)
                 color = C["select"] if selected else self.tint(shape.owner) \
-                    or QColor(self.pens.color(category))
+                    or QColor(own.color if own is not None else self.pens.color(category))
+                scale = (own.weight / pens.CATEGORIES[category][1] if own is not None
+                         else self.pens.scale(category))
                 style = Qt.DashLine if role == "door_hidden" else Qt.SolidLine
-                painter.setPen(QPen(color, (0.8 if thin else 1.3) * self.unit
-                                    * self.pens.scale(category), style))
+                painter.setPen(QPen(color, (0.8 if thin else 1.3) * self.unit * scale, style))
                 painter.setBrush(QBrush(color) if role == "door_frame" else Qt.NoBrush)
             painter.drawPath(path)
+
+    def _draw_foreign_view(self, painter: QPainter, plan, selection) -> set:
+        """Arestas em vista dos elementos de outro programa (spec/ui 60 §3): podem ser
+        centenas de milhares; as de pena comum vão num traço só, com as fora da tela
+        deixadas de lado. Devolve os donos desenhados aqui."""
+        cache = getattr(plan, "_foreign_view_cache", None)
+        if cache is None:
+            owners, segments = [], []
+            for shape in plan.shapes:
+                if shape.role == "foreign_view" and len(shape.points) == 2:
+                    owners.append(shape.owner)
+                    segments.append((*shape.points[0], *shape.points[1]))
+            cache = (np.array(owners, dtype=object),
+                     np.array(segments, dtype=float).reshape(-1, 4))
+            plan._foreign_view_cache = cache
+        owners, segments = cache
+        if not len(owners):
+            return set()
+        special = {o for o in set(owners.tolist()) if o in selection or self.tint(o)
+                   or self._element_pen(o, "view") is not None}
+        keep = ~np.isin(owners, list(special)) if special else np.ones(len(owners), bool)
+        xy = segments[keep].reshape(-1, 2)
+        if self.rotation:
+            c, s = math.cos(self.rotation), math.sin(self.rotation)
+            xy = np.c_[xy[:, 0] * c + xy[:, 1] * s, xy[:, 1] * c - xy[:, 0] * s]
+        sx = self.origin.x() + xy[:, 0] * self.scale
+        sy = self.origin.y() - xy[:, 1] * self.scale
+        pts = np.c_[sx, sy].reshape(-1, 4)
+        if isinstance(self, QWidget):  # na tela (na folha impressa vai tudo)
+            w, h = self.width(), self.height()
+            visible = ~(((pts[:, 0] < 0) & (pts[:, 2] < 0)) | ((pts[:, 0] > w) & (pts[:, 2] > w))
+                        | ((pts[:, 1] < 0) & (pts[:, 3] < 0))
+                        | ((pts[:, 1] > h) & (pts[:, 3] > h)))
+            pts = pts[visible]
+            # menor que meio pixel não se vê
+            pts = pts[np.abs(pts[:, 0] - pts[:, 2]) + np.abs(pts[:, 1] - pts[:, 3]) > 0.5]
+        painter.setPen(QPen(QColor(self.pens.color("view")),
+                            max(self.unit, self._px(self.pens.weight("view", VIEW_WEIGHT)))))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawLines([QLineF(*row) for row in pts.tolist()])
+        return set(owners.tolist()) - special
 
     def _draw_object(self, painter: QPainter, shape, selected: bool) -> None:
         """Símbolo do objeto paramétrico (objeto-parametrico.md §7): linha fina; o contorno
         com fundo cobre o que fica por baixo; acima do plano de corte, tracejado."""
         path = self._path(shape.points, shape.closed)
+        own = self._element_pen(shape.owner, "cut")  # pena do objeto (spec/ui 57)
         color = C["select"] if selected else self.tint(shape.owner) \
-            or QColor(self.pens.color("object"))
-        width = 1.6 * self.unit if selected else max(
-            self.unit, self._px(self.pens.weight("object", ABOVE_WEIGHT)))
+            or QColor(own.color if own is not None else self.pens.color("object"))
+        weight = own.weight / 1000.0 if own is not None else self.pens.weight("object",
+                                                                              ABOVE_WEIGHT)
+        width = 1.6 * self.unit if selected else max(self.unit, self._px(weight))
         style = Qt.DashLine if shape.role == "object_above" else Qt.SolidLine
         if shape.role in ("object_fill", "plant_fill") and shape.closed:
             painter.fillPath(path, C["background"])
@@ -690,24 +776,37 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         entry = cache.get(id(prims))
         found = entry[1] if entry is not None and entry[0] is prims else None
         if found is None:
-            groups: dict[tuple[float, str], QPainterPath] = {}
+            groups: dict[tuple, QPainterPath] = {}
             for stroke in prims.strokes:
-                path = groups.setdefault((stroke.weight, stroke.dash or "solid"),
-                                         QPainterPath())
+                # cor e espessura do estilo da anotação (spec/ui 55 §2.1)
+                key = (stroke.weight, stroke.dash or "solid", stroke.color, stroke.pen,
+                       stroke.pen_no)
+                path = groups.setdefault(key, QPainterPath())
                 path.addPolygon(QPolygonF([QPointF(x, y) for x, y, *_ in stroke.points]))
                 if stroke.closed:
                     path.closeSubpath()
             for lines, weight in prims.bulk:  # desenho importado (arrays, spec/ui 22 §7)
-                path = groups.setdefault((weight, "solid"), QPainterPath())
+                path = groups.setdefault((weight, "solid", None, True, None), QPainterPath())
                 pts = [QPointF(x, y) for x, y in lines.coords.tolist()]
                 for i, (a, b) in enumerate(zip(lines.starts[:-1].tolist(),
                                                lines.starts[1:].tolist(), strict=True)):
                     path.addPolygon(QPolygonF(pts[a:b]))
                     if lines.closed[i]:
                         path.closeSubpath()
-            found = [(w, d, path) for (w, d), path in groups.items()]
+            found = [(*key, path) for key, path in groups.items()]
             cache[id(prims)] = (prims, found)  # o objeto junto: o id não é reaproveitado
         return found
+
+    def _text_font(self, text) -> QFont | None:
+        """Fonte do texto da anotação: a do estilo (spec/ui 55 §2.1) ou a da interface."""
+        font = self._font(text.height)
+        if font is None:
+            return None
+        if text.font:
+            font.setFamily(text.font)
+        font.setBold(text.bold)
+        font.setItalic(text.italic)
+        return font
 
     def _draw_annotations(self, painter: QPainter) -> None:
         """Traços e textos das anotações (as hachuras vêm nas regiões), spec/ui 13."""
@@ -725,38 +824,80 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             painter.setTransform(world, True)
             if prims.bulk:  # desenho importado: traço fino, sem suavizar (bem mais rápido)
                 painter.setRenderHint(QPainter.Antialiasing, False)
-            for weight, dash, path in self._stroke_paths(prims):
+            selected = owner in selection
+            for weight, dash, own, pen, pen_no, path in self._stroke_paths(prims):
+                chosen = None
+                if pen_no is not None:  # pena escolhida na anotação (spec/ui 57)
+                    chosen = self.pens.number(pen_no)
+                    weight, pen, own = chosen.weight, False, None
                 # Espessura em unidades do modelo: a transformação a leva aos pixels.
-                px = self._line_px(self.pens.weight(category, weight))
-                painter.setPen(QPen(color, px / self.scale, dashes.get(dash, Qt.SolidLine)))
+                px = self._line_px(self.pens.weight(category, weight) if pen else weight)
+                stroke_color = color if selected or not own else self._own(owner, own)
+                if chosen is not None and not selected:
+                    stroke_color = self.tint(owner) or QColor(chosen.color)
+                painter.setPen(QPen(stroke_color, px / self.scale,
+                                    dashes.get(dash, Qt.SolidLine)))
                 painter.drawPath(path)
             painter.restore()
-            painter.setPen(QPen(C["select"] if owner in selection else ink))
             for text in prims.texts:
-                font = self._font(text.height)
-                if font is None:
-                    continue
-                painter.save()
-                painter.setFont(font)
-                painter.translate(self.to_screen(text.at))
-                angle, flipped = self.reading_angle(text.angle)
-                painter.rotate(-angle)
-                metrics = painter.fontMetrics()
-                width, height = metrics.horizontalAdvance(text.text), metrics.height()
-                halign = text.halign
-                if flipped:  # virado para ler: o texto ocupa o mesmo lugar do outro lado
-                    halign = {"left": "right", "right": "left"}.get(halign, halign)
-                x = {"left": 0.0, "center": -width / 2, "right": -width}[halign]
-                y = (0.0 if flipped else -height) if text.valign == "bottom" else -height / 2
-                painter.drawText(QRectF(x, y, width + 2, height), Qt.AlignLeft | Qt.AlignBottom,
-                                 text.text)
-                painter.restore()
+                if selected:
+                    text_color = C["select"]
+                elif text.pen_no is not None:  # pena escolhida no texto (spec/ui 57)
+                    text_color = self.tint(owner) or QColor(self.pens.number(text.pen_no).color)
+                else:
+                    text_color = self._own(owner, text.color) if text.color else ink
+                self._draw_text(painter, text, text_color)
+
+    def _draw_text(self, painter: QPainter, text, color) -> None:
+        """Um texto de anotação na cor dada (fonte, ângulo de leitura e alinhamento)."""
+        font = self._text_font(text)
+        if font is None:
+            return
+        painter.setPen(QPen(color))
+        painter.save()
+        painter.setFont(font)
+        painter.translate(self.to_screen(text.at))
+        angle, flipped = self.reading_angle(text.angle)
+        painter.rotate(-angle)
+        metrics = painter.fontMetrics()
+        width, height = metrics.horizontalAdvance(text.text), metrics.height()
+        halign = text.halign
+        if flipped:  # virado para ler: o texto ocupa o mesmo lugar do outro lado
+            halign = {"left": "right", "right": "left"}.get(halign, halign)
+        x = {"left": 0.0, "center": -width / 2, "right": -width}[halign]
+        y = (0.0 if flipped else -height) if text.valign == "bottom" else -height / 2
+        painter.drawText(QRectF(x, y, width + 2, height), Qt.AlignLeft | Qt.AlignBottom,
+                         text.text)
+        if text.fixed and self.show_fixed_marks:  # texto de cota que não acompanha
+            painter.setPen(QPen(C["select"], 1, Qt.DashLine))
+            painter.drawLine(QPointF(x, y + height + 1), QPointF(x + width, y + height + 1))
+        painter.restore()
+
+    def _draw_ghost(self, painter: QPainter, prims) -> None:
+        """Fantasma de uma anotação (ex.: o texto da cota sendo levado, spec/ui 57 §4):
+        traços tracejados e textos na cor da pré-visualização."""
+        color = QColor(C["preview"])
+        painter.save()
+        painter.setTransform(self.world_transform(), True)
+        painter.setBrush(Qt.NoBrush)
+        for *_, path in self._stroke_paths(prims):
+            painter.setPen(QPen(color, 1.4 / self.scale, Qt.DashLine))
+            painter.drawPath(path)
+        painter.restore()
+        for text in prims.texts:
+            self._draw_text(painter, text, color)
+
+    def element_at(self, pos) -> str | None:
+        return self.ctx.plan.pick(self.to_world(pos), self.ctx.tol)
 
     def _draw_hover(self, painter: QPainter) -> None:
-        """Destaque do elemento sob o cursor, antes do clique (spec/ui 28 §2)."""
-        owner = self.ctx.hover
-        if owner is None or owner in self.ctx.session.selection                 or self.toolbox.active.name != "select":
-            return
+        """Destaque do elemento sob o cursor, antes do clique (spec/ui 28 §2), e do que
+        está sob o conta-gotas (spec/ui 55 §4.1)."""
+        owner = self.settings_target
+        if owner is None:
+            owner = self.ctx.hover
+            if owner is None or owner in self.ctx.session.selection                     or self.toolbox.active.name != "select":
+                return
         color = QColor(C["select"])
         color.setAlpha(140)
         painter.setPen(QPen(color, 2.5 * self.unit))
@@ -771,7 +912,7 @@ class PlanView(QWidget, ToolInput, FrameHistory):
                                                 self.origin.x(), self.origin.y()), True)
                 painter.setPen(QPen(color, 2.5 * self.unit / self.scale))
                 painter.setRenderHint(QPainter.Antialiasing, False)
-                for _, _, path in self._stroke_paths(prims):
+                for *_, path in self._stroke_paths(prims):
                     painter.drawPath(path)
                 painter.restore()
 
@@ -815,11 +956,14 @@ class PlanView(QWidget, ToolInput, FrameHistory):
                                             self.origin.x(), self.origin.y()), True)
             painter.setPen(QPen(QColor(color), 1.5 * self.unit / self.scale))
             painter.setRenderHint(QPainter.Antialiasing, False)
-            for _, _, path in self._stroke_paths(prims):
+            for *_, path in self._stroke_paths(prims):
                 painter.drawPath(path)
             painter.restore()
 
     def leaveEvent(self, event):
+        if self.settings_target is not None:
+            self.settings_target = None
+            self.update()
         if self.ctx.hover is not None:
             self.ctx.hover = None
             self.update()
@@ -827,6 +971,9 @@ class PlanView(QWidget, ToolInput, FrameHistory):
 
     def _draw_tool(self, painter: QPainter) -> None:
         tool = self.toolbox.active
+        ghost = tool.ghost()
+        if ghost is not None:
+            self._draw_ghost(painter, ghost)
         for mark in tool.preview() + self.ctx.guide_marks():
             if mark.style == "gap":
                 painter.setPen(Qt.NoPen)
@@ -963,6 +1110,8 @@ class PlanView(QWidget, ToolInput, FrameHistory):
             self.context_requested.emit(gid, event.globalPosition().toPoint())
             return
         button = {Qt.LeftButton: "left", Qt.RightButton: "right"}.get(event.button())
+        if button == "left" and self.settings_click(event.position(), self._mods(event)):
+            return
         if button:
             tool.press(p, self._mods(event), button)
             if button == "left":  # ponto anterior da coordenada relativa (spec/ui 24 §4)
@@ -982,6 +1131,7 @@ class PlanView(QWidget, ToolInput, FrameHistory):
         p = self.to_world(event.position())
         self.cursor_moved.emit(*p)
         self.toolbox.active.move(p, self._mods(event))
+        self.settings_cursor(event.modifiers())  # conta-gotas: realça o que está sob ele
         self.restart_dwell()
         self._refresh_hint()
 

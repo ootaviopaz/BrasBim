@@ -15,7 +15,7 @@ import math
 
 import ifcopenshell.util.element
 
-from brasbim.core import display_layers, geom2d, guid, intervention
+from brasbim.core import display_layers, element_pens, geom2d, guid, intervention
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import commands as door_cmd
 from brasbim.core.fillings import doors
@@ -511,7 +511,8 @@ def _with_annotations(label: str, doc: Document, gids, core, annos_ops) -> Trans
 
 
 def _objects(doc: Document, gids) -> tuple[list[str], list]:
-    """(GlobalIds dos outros elementos, objetos paramétricos)."""
+    """(GlobalIds dos outros elementos, objetos paramétricos e formas livres)."""
+    from brasbim.core.freeform import elements as freeform
     from brasbim.core.objects import elements as objects
 
     others, found = [], []
@@ -519,7 +520,7 @@ def _objects(doc: Document, gids) -> tuple[list[str], list]:
         e = doc.get(g if isinstance(g, str) else g.GlobalId)
         if objects.is_part(e):
             e = objects.parent_of(e)
-        if objects.is_object(e):
+        if objects.is_object(e) or freeform.is_freeform(e):
             if e not in found:
                 found.append(e)
         else:
@@ -531,12 +532,16 @@ def _object_ops(doc: Document, found, moving: set[str], mode: str, fn=None, vect
                 angle: float = 0.0, axis: float = 0.0) -> list[Op]:
     """Operações dos objetos: ``mode`` = move, rotate, copy, mirror, mirror_copy. Preso à
     parede: acompanha a parede selecionada junto; sozinho, só desliza ao longo dela."""
+    from brasbim.core.freeform import elements as freeform
     from brasbim.core.objects import commands as oc
     from brasbim.core.objects import elements as objects
     from brasbim.core.objects import hosting
 
     ops = []
     for e in found:
+        if freeform.is_freeform(e):
+            ops += _freeform_ops(doc, e, mode, fn, angle, axis)
+            continue
         state = objects.read_state(doc, e)
         copying = mode in ("copy", "mirror_copy")
         if state["host"] is not None:
@@ -562,6 +567,26 @@ def _object_ops(doc: Document, found, moving: set[str], mode: str, fn=None, vect
         else:
             ops += oc.edit_object(doc, e, **changes).ops
     return ops
+
+
+def _freeform_ops(doc: Document, element, mode: str, fn, angle: float, axis: float) -> list[Op]:
+    """Forma livre levada pela transformação (forma-livre.md §5): muda o ponto e a
+    rotação; o espelho inverte a malha no x local."""
+    from brasbim.core.freeform import commands as fc
+    from brasbim.core.freeform import elements as freeform
+    from brasbim.core.freeform import mesh
+
+    state = freeform.read_state(doc, element)
+    changes = {"point": list(fn(state["point"]))}
+    if mode == "rotate":
+        changes["angle"] = (state["angle"] + math.degrees(angle) + 180.0) % 360.0 - 180.0
+    elif mode in ("mirror", "mirror_copy"):
+        changes["angle"] = (2 * axis - state["angle"]) % 360.0 - 180.0
+        changes["parts"] = mesh.transformed(state["parts"], scale=(-1.0, 1.0, 1.0))
+        changes["recipe"] = None
+    if mode in ("copy", "mirror_copy"):
+        return [Op("freeform.create", guid.new(), data={**copy.deepcopy(state), **changes})]
+    return fc.edit(doc, element, **changes).ops
 
 
 def _grid_ops(doc: Document, grids_, fn, turn: float = 0.0, mirror_axis=None,
@@ -740,7 +765,8 @@ def copy_elements(doc: Document, gids, vector) -> Transaction:
         lambda items: _misc_ops(doc, items, fn, copying=True))
     tx = _hosted_copies(doc, tx, gids, vector)
     # a cópia fica na camada e na situação do original (spec/ui 18 §5, spec/ui 31 §2)
-    return intervention.inherit(doc, display_layers.inherit(doc, tx, gids), gids)
+    tx = intervention.inherit(doc, display_layers.inherit(doc, tx, gids), gids)
+    return element_pens.inherit(doc, tx, gids)  # e as penas (spec/ui 57)
 
 
 MAX_COPIES = 1000
@@ -777,8 +803,10 @@ def mirror_elements(doc: Document, gids, a, b, keep: bool = False) -> Transactio
         lambda found: _grid_ops(doc, found, fn, mirror_axis=axis, copying=keep),
         lambda ids: _skylight_ops(doc, ids, fn, mirror_axis=axis, copying=keep),
         lambda items: _misc_ops(doc, items, fn, mirror_axis=axis, copying=keep))
-    return (intervention.inherit(doc, display_layers.inherit(doc, tx, gids), gids) if keep
-            else tx)
+    if not keep:
+        return tx
+    tx = intervention.inherit(doc, display_layers.inherit(doc, tx, gids), gids)
+    return element_pens.inherit(doc, tx, gids)  # o espelho com cópia leva as penas
 
 
 def stretch_elements(doc: Document, gids, area, vector) -> Transaction:
@@ -800,7 +828,8 @@ def stretch_elements(doc: Document, gids, area, vector) -> Transaction:
             doc, rest, fn, "Esticar", True, geom2d.stretched), ops)
 
     def objects_ops(found):
-        free = [e for e in found if objects.read_state(doc, e)["host"] is None]
+        free = [e for e in found if not objects.is_object(e)
+                or objects.read_state(doc, e)["host"] is None]
         return _object_ops(doc, free, moving, "move", fn, vector)
 
     tx = _with_objects("Esticar", doc, gids, lambda rest: _with_annotations(
@@ -817,7 +846,9 @@ def stretch_elements(doc: Document, gids, area, vector) -> Transaction:
 def _hosted_copies(doc: Document, tx: Transaction, gids, vector) -> Transaction:
     """Parede copiada junto com o objeto preso a ela: a cópia do objeto vai na cópia da
     parede (§6.3)."""
+    from brasbim.core.objects import elements as objects
     from brasbim.core.objects import hosting
 
-    extra = hosting.copied_ops(doc, tx, _objects(doc, gids)[1], vector)
+    extra = hosting.copied_ops(doc, tx, [e for e in _objects(doc, gids)[1]
+                                         if objects.is_object(e)], vector)
     return Transaction(tx.label, tx.ops + extra) if extra else tx

@@ -100,9 +100,12 @@ HANDLER_MODULES = (
     "brasbim.core.objects.types",
     "brasbim.core.objects.elements",
     "brasbim.core.objects.rebuild",
+    "brasbim.core.freeform.elements",
     "brasbim.core.intervention",
     "brasbim.core.display_layers",
     "brasbim.core.edit_state",
+    "brasbim.core.find",  # criteria.edit, pset.set (spec/ui 55 §3)
+    "brasbim.core.element_pens",  # element_pens.set (spec/ui 57)
 )
 _loaded = False
 

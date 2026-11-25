@@ -10,6 +10,7 @@ aplicam pela sessão.
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import math
 import re
@@ -258,6 +259,7 @@ class PlanContext:
         # Seleção (spec/ui 28): somar cliques (como no CAD) ou trocar a cada clique.
         self.accumulate = True
         self.hover: str | None = None  # elemento realçado sob o cursor
+        self.picked = None  # ajustes pegos com o conta-gotas (spec/ui 55 §4)
         self.area: selection_area.Area | None = None  # área de seleção (spec/ui 38 §2)
         # Chave Escolher travados (spec/ui 39 §5): desligada, o clique e a janela não pegam
         # os travados; a atração continua.
@@ -497,6 +499,10 @@ class Tool:
     def hint(self) -> str:
         return ""
 
+    def ghost(self):
+        """Primitivas (``prims.Prims``) a desenhar como fantasma, ou None."""
+        return
+
     def preview(self) -> list[Mark]:
         return []
 
@@ -617,8 +623,26 @@ class Tool:
         pass
 
     def key(self, key: str) -> bool:
-        """Tecla da ferramenta (``enter``, ``tab``); devolve se foi usada."""
+        """Tecla da ferramenta (``enter``, ``tab``, ``ctrl``); devolve se foi usada."""
         return False
+
+    # Passar a vez para outra ferramenta já preparada: ``(nome, ajustes)``; a vista ativa
+    # a ferramenta e chama ``take(ajustes)`` (cópia ao arrastar, spec/ui 55 §5).
+    handoff: tuple[str, dict] | None = None
+
+    def take(self, setup: dict) -> None:
+        pass
+
+    def copying(self) -> bool:
+        """Cursor com o + da cópia (spec/ui 55 §5)."""
+        return False
+
+    # Estilo das próximas anotações (spec/ui 55 §2.3), escolhido na barra Opções; só as
+    # ferramentas de anotação o usam. ``None``: o padrão (pena da categoria).
+    style: dict | None = None
+
+    def style_kw(self) -> dict:
+        return {"style": dict(self.style)} if self.style else {}
 
     def transform_fn(self):
         """Transformação 2D que a ferramenta aplicaria agora à seleção (fantasma no 3D,
@@ -787,8 +811,15 @@ def _structure_handles(doc, gid: str) -> list[tuple[str, Point]]:
         d, n = annotation_dims.frame(state, pts)
         ts = [(p[0] - pts[0][0]) * d[0] + (p[1] - pts[0][1]) * d[1] for p in pts]
         t, off = (min(ts) + max(ts)) / 2, state["offset"]
-        return [("dim_offset", (pts[0][0] + d[0] * t + n[0] * off,
-                                pts[0][1] + d[1] * t + n[1] * off))]
+        out = [("dim_offset", (pts[0][0] + d[0] * t + n[0] * off,
+                               pts[0][1] + d[1] * t + n[1] * off))]
+        # Alça de cada número: leva só o texto (spec/ui 57 §4); um pouco acima da base
+        # do texto, para não cair em cima da alça da linha de cota.
+        k = storeys.paper(doc.get(state["storey"]), 1.0)
+        up = annotation_dims.TEXT * k * 0.6
+        for index, _, place, _home in annotation_dims.text_spots(doc, state, k):
+            out.append((f"dim_text:{index}", (place[0] + n[0] * up, place[1] + n[1] * up)))
+        return out
     if element is None or not sc.is_structure(element):
         return []
     state = sc.read_state(doc, element)
@@ -834,6 +865,9 @@ class SelectTool(Tool):
         gid = self.ctx.plan.pick(p, self.ctx.tol)
         element = doc.find(gid) if gid else None
         kind = annotation_base.kind_of(element) if element is not None else None
+        if self.ask_text is not None and kind is annotation_dims.DIMENSION:
+            self._edit_dimension_text(element, p)
+            return
         if self.ask_text is None or kind not in (drafting.TEXT, drawing2d.LABEL):
             return
         if kind is drawing2d.LABEL and annotation_base.read_state(element)["field"] != "free":
@@ -843,6 +877,28 @@ class SelectTool(Tool):
         text = self.ask_text(current)
         if text is not None and text.strip() and text != current:
             self.session.run(lambda: ac.edit_element(doc, gid, text=text.strip("\n")))
+
+    def _edit_dimension_text(self, element, p) -> None:
+        """Clique duplo no número da cota: texto daquele trecho (spec/ui 55 §2.3);
+        ``<medida>`` continua acompanhando; vazio volta à medida."""
+        doc = self.session.doc
+        texts = annotation_base.build(doc, element).texts
+        if not texts:
+            return
+        index = min(range(len(texts)), key=lambda i: math.dist(texts[i].at, p))
+        state = annotation_base.read_state(element)
+        current = (state.get("texts") or {}).get(str(index), annotation_dims.MEASURE)
+        self.drag = None
+        text = self.ask_text(current)
+        if text is None or text == current:
+            return
+        new = dict(state.get("texts") or {})
+        text = text.strip("\n")
+        if not text.strip() or text == annotation_dims.MEASURE:
+            new.pop(str(index), None)
+        else:
+            new[str(index)] = text
+        self.session.run(lambda: ac.edit_element(doc, element.GlobalId, texts=new or None))
 
     def hint(self) -> str:
         if self.drag3d is not None:
@@ -861,7 +917,10 @@ class SelectTool(Tool):
                     f"também os que tocam; {close} para fechar; Shift tira da seleção; "
                     "Esc cancela")
         if d and d["kind"] == "move" and d["active"]:
-            return "Solte para mover a seleção (Esc cancela)"
+            if d.get("copy"):
+                return ("Cópia (+): solte para deixar a cópia e siga clicando para mais "
+                        "cópias; Ctrl volta a mover; Esc cancela")
+            return "Solte para mover a seleção; Ctrl faz cópias (+); Esc cancela"
         if self.ctx.accumulate:
             text = ("Clique soma à seleção; Shift+clique tira; clique no vazio abre a "
                     "janela, arrastar no vazio faz o laço; Esc limpa")
@@ -879,9 +938,25 @@ class SelectTool(Tool):
                 and self.drag3d is None and not self.session.selection):
             self.repeat = self.ctx.last_tool[0]
             return True
+        d = self.drag
+        if key == "ctrl" and d and d["kind"] == "move" and d["active"]:
+            d["copy"] = not d.get("copy")  # cópia ao arrastar (spec/ui 55 §5)
+            return True
         return False
 
     repeat: str | None = None
+
+    def copying(self) -> bool:
+        """Arrasto em modo cópia: o cursor mostra o + (spec/ui 55 §5)."""
+        d = self.drag
+        return bool(d and d["kind"] == "move" and d["active"] and d.get("copy"))
+
+    def ghost(self):
+        """O texto da cota no lugar novo enquanto a alça é arrastada (spec/ui 57 §4)."""
+        d = self.drag
+        if d and d["kind"] == "handle" and d["active"] and not d.get("error"):
+            return d.get("ghost")
+        return None
 
     def wants_number(self) -> bool:
         return self.drag3d is not None or bool(
@@ -1064,6 +1139,31 @@ class SelectTool(Tool):
             return lambda: sc.move_slab_vertex(doc, gid, int(which[6:]), q), q, ""
         if which == "space_label":
             return lambda: ac.edit_element(doc, gid, label_at=list(q)), q, ""
+        if which.startswith("dim_text:"):  # só o texto da cota (spec/ui 57 §4)
+            index = int(which.split(":", 1)[1])
+            element = doc.get(gid)
+            state = annotation_base.read_state(element)
+            k = storeys.paper(doc.get(state["storey"]), 1.0)
+            raise_by = annotation_dims.TEXT * k * 0.6  # a alça fica acima da base do texto
+            _, n = annotation_dims.frame(state, annotation_dims.points(doc, state))
+            target = (p[0] - n[0] * raise_by, p[1] - n[1] * raise_by)
+            self.snapped = snap.Snap(target, "free")
+            move = annotation_dims.text_move(doc, state, index, target)
+            moves = dict(state.get("text_moves") or {})
+            if math.hypot(*move) < 1e-6:
+                moves.pop(str(index), None)
+            else:
+                moves[str(index)] = [round(move[0], 6), round(move[1], 6)]
+            # fantasma enquanto arrasta: só o que muda (o texto no lugar novo e a linha
+            # de chamada); a linha de cota fica como está
+            moved = annotation_base.build_state(
+                doc, annotation_base.kind_of(element), doc.get(state["storey"]),
+                {**state, "text_moves": moves or None})
+            now = annotation_base.build(doc, element)
+            self.drag["ghost"] = dataclasses.replace(
+                moved, strokes=[k for k in moved.strokes if k not in now.strokes],
+                texts=[t for t in moved.texts if t not in now.texts])
+            return (lambda: ac.edit_element(doc, gid, text_moves=moves or None), p, "")
         if which == "dim_offset":
             state = annotation_base.read_state(doc.get(gid))
             pts = annotation_dims.points(doc, state)
@@ -1358,6 +1458,13 @@ class SelectTool(Tool):
             self.session.run(lambda: fc.edit_door(self.session.doc, door,
                                                   wall=target["wall"],
                                                   distance=target["distance"]))
+        elif kind == "move" and d.get("copy"):
+            # Cópia ao arrastar (spec/ui 55 §5): a primeira cópia sai ao soltar e o Copiar
+            # segue com o mesmo ponto de base: cada clique, mais uma cópia, até Esc.
+            doc, gids, vector = self.session.doc, sorted(selection), d["vector"]
+            if vector and math.hypot(*vector) > 1e-9:
+                self.session.run(lambda: transform.copy_elements(doc, gids, vector))
+            self.handoff = ("copy", {"base": d["base"]})
         elif kind == "move" and d["vector"] and math.hypot(*d["vector"]) > 1e-9:
             doc, gids, vector = self.session.doc, sorted(selection), d["vector"]
             self.session.run(lambda: transform.move_elements(doc, gids, vector))
@@ -1750,10 +1857,20 @@ def _first_type(session: Session, ifc_class: str) -> str | None:
     types = sorted(session.doc.ifc.by_type(ifc_class), key=lambda t: t.Name or "")
     if ifc_class == "IfcSlabType":  # os de cobertura ficam com a ferramenta Cobertura
         types = [t for t in types if t.PredefinedType != "ROOF"]
+    if ifc_class in ("IfcColumnType", "IfcBeamType"):  # tipos de outro programa (IFC
+        types = [t for t in types if _has_section(t)]   # aberto) não têm a seção daqui
     preferred = {"IfcColumnType": "Pilar 20×40", "IfcBeamType": "Viga 14×40",
                  "IfcSlabType": "Laje maciça 10 cm"}.get(ifc_class)
     found = next((t for t in types if t.Name == preferred), types[0] if types else None)
     return found.GlobalId if found is not None else None
+
+
+def _has_section(element_type) -> bool:
+    try:
+        st_types.section(element_type)
+    except (OpError, AttributeError, KeyError, TypeError, ValueError):
+        return False
+    return True
 
 
 def _base_section(session: Session, ifc_class: str) -> dict:
@@ -2613,7 +2730,7 @@ class LineTool(WallTool):
         if storey is not None:
             self.session.run(lambda: ac.create_annotation(
                 doc, "line2d", storey, points=points, closed=closed, weight=o.weight,
-                dash=o.dash))
+                dash=o.dash, **self.style_kw()))
 
     def shape_preview(self):
         pts = list(self.points)
@@ -2654,7 +2771,8 @@ class LevelTool(_PointTool):
         self.move(p, mods)
         storey, q, doc = self._storey(), self.snapped.point, self.session.doc
         if storey is not None:
-            self.session.run(lambda: ac.create_annotation(doc, "level_mark", storey, at=q))
+            self.session.run(lambda: ac.create_annotation(doc, "level_mark", storey, at=q,
+                                                          **self.style_kw()))
 
 
 class _TextOptions:
@@ -2690,7 +2808,8 @@ class TextTool(_PointTool):
             return
         self.session.run(lambda: ac.create_annotation(doc, "text", storey, at=q,
                                                       text=text.strip("\n"), size=o.size,
-                                                      angle=o.angle, align=o.align))
+                                                      angle=o.angle, align=o.align,
+                                                      **self.style_kw()))
 
 
 class NorthTool(_PointTool):
@@ -2721,7 +2840,7 @@ class NorthTool(_PointTool):
         angle = math.degrees(math.atan2(q[1] - a[1], q[0] - a[0]))
         if storey is not None:
             self.session.run(lambda: ac.create_annotation(doc, "north", storey, at=a,
-                                                          angle=angle))
+                                                          angle=angle, **self.style_kw()))
 
     def cancel(self):
         if self.points:
@@ -2912,7 +3031,8 @@ class _ClickTool(_PointTool):
 
     def _create(self, state: dict) -> None:
         doc, storey = self.session.doc, self.session.storey
-        self.session.run(lambda: ac.create_annotation(doc, self.prefix, storey, **state))
+        self.session.run(lambda: ac.create_annotation(doc, self.prefix, storey, **state,
+                                                      **self.style_kw()))
 
 
 class CircleTool(_ClickTool):
@@ -3011,7 +3131,7 @@ class SplineTool(LineTool):
         if storey is not None:
             self.session.run(lambda: ac.create_annotation(
                 doc, "spline2d", storey, points=points, closed=closed, weight=o.weight,
-                dash=o.dash))
+                dash=o.dash, **self.style_kw()))
 
     def shape_preview(self):
         pts = list(self.points)
@@ -3201,7 +3321,8 @@ class RevisionTool(SlabTool):
         if storey is not None:
             number = o.number or drawing2d.next_revision(doc)
             self.session.run(lambda: ac.create_annotation(
-                doc, "revision", storey, outline=points, number=number, note=o.note))
+                doc, "revision", storey, outline=points, number=number, note=o.note,
+                **self.style_kw()))
         self.points = []
 
 
@@ -3796,6 +3917,7 @@ class DimensionTool(_PointTool):
     def __init__(self, ctx):
         super().__init__(ctx)
         self.direction = "aligned"
+        self.marker: str | None = None  # marcador das próximas cotas (spec/ui 55 §2.3)
         self.items: list[tuple] = []  # (ponto, referência)
         self.hover: tuple | None = None
 
@@ -3837,8 +3959,11 @@ class DimensionTool(_PointTool):
         items, (direction, angle) = list(self.items), DIM_DIRECTIONS[self.direction]
         self.items, self.fixed = [], {}
         if storey is not None:
+            extra = dict(self.style_kw())
+            if self.marker:  # marcador escolhido na barra Opções (spec/ui 55 §2.3)
+                extra["marker"] = self.marker
             self.session.run(lambda: ac.create_dimension(doc, storey, items, direction, angle,
-                                                         offset))
+                                                         offset, **extra))
 
     def press(self, p, mods, button="left"):
         if button != "left":
@@ -4583,7 +4708,18 @@ class CopyTool(MoveTool):
     def cancel(self):
         busy = super().cancel()
         self.count = 1
+        self.dragged = False
         return busy
+
+    dragged = False  # veio da cópia ao arrastar: cursor com + (spec/ui 55 §5)
+
+    def take(self, setup: dict) -> None:
+        """Começa já com o ponto de base (cópia ao arrastar com Ctrl, spec/ui 55 §5)."""
+        self.points = [tuple(setup["base"])]
+        self.dragged = True
+
+    def copying(self) -> bool:
+        return self.dragged and bool(self.points)
 
     def _apply(self, vector):
         if self.count == 1:
@@ -5812,7 +5948,9 @@ def selection_actions(doc, gids) -> list[str]:
     elements = [e for e in elements if e is not None]
     if not elements:
         return []
-    walls = [e for e in elements if e.is_a("IfcWall")]
+    from brasbim.core.walls.wall import is_parametric
+
+    walls = [e for e in elements if is_parametric(doc, e)]  # parede só malha: sem ações
     from brasbim.core.structure import skylights
 
     door_list = [e for e in elements if (e.is_a("IfcDoor") or e.is_a("IfcWindow"))
@@ -5850,6 +5988,9 @@ def selection_actions(doc, gids) -> list[str]:
         if len(found_objects) == 1 and not free:
             out.append("detach")
     out += ["select_similar", "situation"]  # spec/ui 23 §7, spec/ui 31 §2
+    if len(elements) == 1:  # conta-gotas (spec/ui 55 §4.1)
+        out.append("pick_settings")
+    out.append("apply_settings")
     locked = [e for e in elements if edit_state.is_locked(doc, e)]
     out.append("unlock" if len(locked) == len(elements) else "lock")  # spec/ui 39 §5
     out.append("hide")  # spec/ui 39 §4

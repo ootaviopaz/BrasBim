@@ -4,8 +4,196 @@ Estado do trabalho para retomar numa sessão nova. Atualizar ao fim de cada etap
 Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restrito/` nem
 `tools/`).
 
-*Atualizado em 2026‑11‑10 (fórum no GitHub Discussions e no site; conta do GitHub
-renomeada para `ootaviopaz`).*
+*Atualizado em 2026‑11‑24, fim do dia (conta‑gotas, atalhos, cotas em níveis, abrir IFC
+de outro programa e 3D em lote; spec/ui 55, 58, 59 e 60).*
+
+> **RETOMAR AQUI (2026‑11‑24, fim do dia).** A pasta local foi apagada pelo revisor; tudo
+> está no GitHub, no ramo **`estilo-localizar-contagotas`** (último commit antes desta
+> nota: `a15b766`), **ainda não juntado ao `main`**. Para retomar:
+> `git clone -b estilo-localizar-contagotas https://github.com/ootaviopaz/BrasBim.git`,
+> depois `py -3.12 -m venv .venv` e `.venv\Scripts\python -m pip install -e ".[ui,dev]"`.
+> Testes: `QT_QPA_PLATFORM=offscreen` + `pytest -q` → 1088 passaram, 4 pulados (~6 min).
+> Os diários de sessão (`feedback/diarios/`, fora do git) se perderam junto; nada deles
+> faz falta (o que importava está nas specs e no `CHANGELOG.md`).
+> **Próximos passos para lançar a 0.0.2:** (1) o revisor testar de novo a abertura do IFC
+> grande (IFC2X3 em mm, ~1 milhão de entidades: ~5 min para abrir, com andamento; salvar
+> em 4.3 com nome novo e reabrir fica em ~1,5 min) e o 3D (girar deve ficar fluido);
+> (2) itens G4 (IFC em outro programa) e H3 (instalador) do `docs/roteiro-teste-0.0.2.md`;
+> (3) pull request do ramo para o `main` — **aberto em 2026‑11‑25** (#4, "Versão 0.0.2",
+> https://github.com/ootaviopaz/BrasBim/pull/4),
+> com a suíte rodada antes (1089 passaram, 4 pulados, Python 3.12, Windows 11) e o
+> `ruff` limpo (corrigido `scripts/site/forum_top.py`, commit `09aaae7`); falta o CI
+> ficar verde e juntar depois dos itens (1) e (2); (4) trocar "em desenvolvimento" pela data no
+> `CHANGELOG.md`, gerar o .exe e criar a tag `v0.0.2` com o texto da versão como nota.
+> **Pendências abertas:** hachura do material no corte das peças de outro programa;
+> linhas escondidas na vista dessas peças; contornos do 3D calculados na preparação ao
+> abrir (o 1º quadro do 3D do IFC grande leva ~8 s); acelerar a conversão mm→m (~1 min,
+> `convert_file_length_units` em Python puro); pontos (a)–(d) da spec/ui 58 §6 (atalhos);
+> adiados pelo revisor: forma livre (escultura, corte/fachada) e rodar no navegador.
+
+> **2026‑11‑24 (mesmo ramo `estilo-localizar-contagotas`):** (1) **Conta‑gotas revisto**
+> ("não tem funcionado bem"), comparado com a ajuda pública do Archicad: pegar leva os
+> ajustes às ferramentas da classe mesmo com Selecionar ativa (porta/janela, pilar/viga com
+> a seção, estilo das anotações); últimos ajustes por classe (`ctx.picked_by_group`,
+> `apply(..., by_group)`); Ctrl+Alt+clique num selecionado aplica na seleção toda; realce
+> do elemento sob o conta‑gotas; Alt+clique no 3D; **corrigido** o Alt sozinho que, no
+> Windows, levava o foco ao menu Arquivo (`ToolInput.settings_key`). Spec/ui 55 §7a.
+> (2) **Atalhos de teclado** (spec/ui 58, `ui/shortcuts.py`): menu novo **Preferências >
+> Atalhos de teclado**, para todos os itens dos menus e todas as ferramentas (ações
+> próprias, `window.tool_shortcut_actions`); só as diferenças do padrão em `QSettings`
+> (`atalhos/teclado`). Pontos (a)–(d) da spec/ui 58 §6 esperam o revisor. Testes AJ07–AJ10,
+> AT01–AT07. **Testar no Windows de verdade:** Alt sozinho sobre a planta não abre mais
+> o menu; realce e cursor do conta‑gotas.
+> **Teste do revisor (2026‑11‑24, `docs/roteiro-teste-0.0.2.md`):** A, C, D, E, F
+> (Navegador), B (atalhos, depois da correção), H ok. Corrigidos: janela de atalhos (`QDialog.Accepted`), fantasma do texto
+> da cota ao arrastar (pedido), linhas falsas no 3D das paredes por camadas
+> (`Mesh.outline`: contorno dos triângulos sem a divisão). **Pendentes:** cotas em vários
+> níveis pelo Assistente (proposta `spec/ui/59-cotas-em-niveis.md`, pontos (a)–(e) para o
+> revisor) — **feito** no mesmo dia, com as respostas (faces dos pilares, cômodos e a
+> janela Projeto > Cotar pavimento): `core/annotations/dimension_levels.py`, ferramenta
+> `dimension_levels` do Assistente, testes CN01–CN08. **Adiados pelo revisor ("para um próximo momento"):** forma livre (escultura e
+> corte/fachada) e rodar no navegador (opções levantadas: transmitir com Xpra/noVNC,
+> visualizador web do IFC, versão web).
+> **Abrir IFC2X3 (2026‑11‑24, relato do revisor):** um IFC2X3 de outro programa quebrava a
+> planta. Agora `Document.open` converte 2x3/4 para 4.3 (`core/ifc_upgrade.py`,
+> `doc.converted_from`), `MainWindow.open_path` mostra o andamento, a sessão fica sem nome
+> (Salvar pede nome), `document.of_type` protege `by_type` de classes fora do esquema, a
+> etiqueta de viga aceita contorno qualquer (`plan._beam_strip`) e as ferramentas Pilar e
+> Viga pulam tipos sem seção do BrasBim, e a barra Opções não quebra ao selecionar parede
+> de outro programa. Spec/ui 60, testes AO01–AO05. O arquivo real do
+> revisor (≈1 milhão de entidades) leva ~2,5 min para converter: medir e, se preciso,
+> otimizar.
+> **Peças de outro programa (mesmo dia, "faltaram paredes, escadas, objetos"):**
+> `core/plan_foreign.py` (critério `is_foreign`: corpo e nenhum Pset `BrasBim_*` próprio;
+> reserva de geometria por documento, compartilhada pela planta e pelo 3D; triangulação
+> em lote com `ifcopenshell.geom.iterator`), `plan._foreign` (papéis `foreign` e
+> `foreign_view`), `PlanView._draw_foreign_view` (traço único, sem o que está fora da
+> tela), `Scene._wanted`/`load` (qualquer classe), `plan_foreign.prepare` no
+> `open_path`. Unidades: `ifc_upgrade.to_meters`. Testes AO06–AO09. No arquivo do
+> revisor (≈1 milhão de entidades): converter 2x3→4.3 ~2,5 min, mm→m ~1 min, geometria
+> ~1,5 min (só na primeira abertura salva em 4.3: ~1,5 min); planta 0,2–8 s, 3D 6,5 s.
+> **3D travando (mesmo dia):** `view3d._Batch` (VBOs por contexto, a partir de 300
+> malhas; `MeshTable.version` diz quando refazer), 260 → 33 ms por quadro no arquivo do
+> revisor; o 1º quadro ainda leva ~8 s (contornos das 3.786 malhas). Parede só malha:
+> `walls.wall.is_parametric` (mini‑barra, Propriedades, Dividir).
+> **Pendente:** hachura do material no corte das peças de fora; linhas escondidas na vista;
+> calcular os contornos do 3D na preparação ao abrir (1º quadro).
+
+*Antes: 2026‑11‑23 (spec/ui 55–57 e 16 §4.4: estilo das cotas e textos, Localizar
+e substituir, conta‑gotas, cópia com Ctrl, barra Opções com a seleção, penas por
+elemento, texto da cota móvel, cotas pelo Assistente).*
+
+> **Onde está o trabalho de 2026‑11‑23** (superado pela nota "RETOMAR AQUI" acima): ramo **`estilo-localizar-contagotas`** no
+> GitHub (feito sobre `assistente-foto-objeto`), commits `561e113`, `4186954`, `8a5c931`
+> e este. **Ainda não juntado ao `main`**: para retomar, `git clone
+> https://github.com/ootaviopaz/BrasBim.git` e `git checkout estilo-localizar-contagotas`,
+> ou abrir o pull request para o `main` depois dos testes do revisor.
+
+> **Spec/ui 55 (2026‑11‑23, clone novo do `main` em `19ce678`):** pedido do revisor em
+> quatro itens, spec `spec/ui/55-estilo-de-anotacao-localizar-ajustes-copia.md` aprovada
+> com as propostas (cor/espessura livres por cima da pena, qualquer fonte instalada,
+> Alt+clique pega e Ctrl+Alt+clique aplica, cada clique uma cópia até Esc).
+> (1) **Estilo das anotações**: fonte, altura, negrito, itálico, cor do texto, cor e
+> espessura da linha em toda anotação (chave `style` no Pset `BrasBim_Anotacao`,
+> `core/annotations/style.py`); cota com marcador (traço, seta cheia/aberta, ponto,
+> nenhum), texto de cada trecho com `<medida>` (associativo; sem ele fica fixo e
+> sublinhado só na tela), prefixo, sufixo e casas. (2) **Localizar e substituir**
+> (`core/find.py`, `ui/find_dialog.py`, Ctrl+Shift+F): classes OU, critérios E (tipo, nome,
+> código, camada, situação, material, pavimento, texto, propriedade, quantidade),
+> critérios salvos no projeto (`criteria.edit`), substituir texto/nome/código,
+> propriedade (op nova `pset.set`), tipo, camada, situação e estilo. (3) **Conta‑gotas**
+> (`core/pick_settings.py`): Alt+clique pega, Ctrl+Alt+clique aplica, mini‑barra e menu
+> Editar; com ferramenta de criação ativa, os ajustes vão para ela. (4) **Cópia ao
+> arrastar**: Ctrl no arrasto da seleção mostra o +; ao soltar sai a cópia e o Copiar
+> segue do mesmo ponto de base (Tab, Cópias), Esc termina; Ctrl+D abre o Copiar. Ícones
+> novos `pick_settings`, `apply_settings`, `find`. Testes EA, LS, AJ, CA (spec §6).
+> **2ª rodada (mesmo dia):** estilo na barra Opções das ferramentas de anotação
+> (`Tool.style`/`style_kw`, `DimensionTool.marker`) e **barra Opções com a seleção**
+> (spec/ui 56, `ui/selection_options.py`): com Selecionar e algo selecionado, a barra
+> mostra e edita as características (parede, pilar, viga, laje, cobertura, porta/janela,
+> ambiente, objeto, anotações), "vários" quando diferem. Testes OB01–OB05.
+> **3ª rodada (mesmo dia), spec/ui 57:** **penas por elemento** (`core/element_pens.py`,
+> Pset `BrasBim_PenasElemento`, op `element_pens.set`): Contorno, Hachura, Vista em
+> parede/pilar/viga/laje/cobertura, Contorno em porta/janela/objeto; `Plan.element_pens`,
+> `Edge.pen_no`, `Region.pen_no` (paredes com penas próprias saem num grupo à parte);
+> herdadas na cópia/divisão, pelo conta‑gotas e pelas próximas criações
+> (`Session.new_pens`, barra das ferramentas). Anotações: `pen`/`text_pen` no estilo no
+> lugar de cor/espessura soltas (escolha do revisor; as soltas só ficam para arquivos de
+> antes). Seletor `selection_options.pen_combo` (número, amostra, espessura). **Texto da
+> cota movido:** `text_moves` na cota, alça `dim_text:N`, chamada quando longe. Testes
+> PE01–PE05, TC01–TC02. Commit 4186954.
+> **4ª rodada, spec/ui 16 §4.4:** ferramenta do Assistente `dimension_walls` (cota
+> automática das paredes retas pelo `auto_dimension_wall`, todas num `combine`; pula
+> curvas e as já cotadas pelas duas pontas). Testes AS13. Falta: cotagem do contorno do
+> edifício, cotas internas dos cômodos e dos eixos dos pilares.
+> **Pendente** (spec 55 §7a, 57 §7): penas por elemento nos cortes e fachadas;
+> conta‑gotas levando o estilo para a ferramenta de anotação; conta‑gotas e Ctrl no 3D;
+> `Pset_*Common` entre classes; cor/fonte no DXF; pontos (a)–(c) da spec 56.
+>
+> **Versão 0.0.2 em desenvolvimento (2026‑11‑12, pedido do revisor):** a partir desta
+> data toda mudança entra na 0.0.2 (`pyproject.toml` e `brasbim/__init__.py` já dizem
+> 0.0.2) e ganha uma linha em **`CHANGELOG.md`** no mesmo commit; o texto da versão vira a
+> nota do lançamento no GitHub. Regra gravada no `CLAUDE.md` (Fluxo de trabalho, item 5).
+> **Ao publicar a 0.0.2:** datar a seção, montar o `.exe` (anexar como
+> `BrasBim-Windows-Setup.exe`), atualizar "versão 0.0.1" no `README.md`, em
+> `divulgacao/BRASBIM.md` e no exemplo de `.github/ISSUE_TEMPLATE/problema.yml`.
+>
+> **RETOMAR AQUI — teste do revisor na forma livre (2026‑11‑12, fim do dia):** o revisor
+> testou no aplicativo e achou dois problemas, ainda **sem diagnóstico nem correção**:
+> 1. **Escultura pelo Assistente ficou muito longe do ideal.** A poltrona (peça de
+>    marcenaria) sai bem; a forma esculpida, não. Era o limite previsto: a IA descrevendo
+>    formas simples dá escultura estilizada. Caminhos a avaliar: (a) melhorar as formas e
+>    as instruções para corpos orgânicos (mais `sections` suaves, exemplos na descrição
+>    da ferramenta); (b) plugar um gerador de 3D a partir de foto como conector (fase 2
+>    da spec); (c) orientar o usuário a importar a malha de arquivo (OBJ, STL, GLB), que
+>    já funciona. Pedir ao revisor a foto e o pedido que usou, para reproduzir.
+> 2. **A forma livre não aparece bem no corte e na elevação.** A conferir primeiro:
+>    em vista, `section.py` desenha uma face por triângulo (18 mil itens `face` na
+>    poltrona) e só as quinas como linha (`mesh.crease_edges`, 30°): numa peça
+>    arredondada quase não há quina, então **falta o contorno (silhueta) na direção da
+>    vista**; no corte a seção sai só como contorno, sem hachura. Pedir um print ao
+>    revisor para ver qual é o defeito visível.
+> Nada disso foi mexido. O commit `0fece33` (ramo `assistente-foto-objeto`) tem a fase 1
+> como estava; nada foi enviado ao GitHub (o revisor quer testar antes do push).
+>
+> **Forma livre (2026‑11‑12, `spec/elementos/forma-livre.md`, fase 1 implementada):**
+> elemento novo de geometria em malha, sem tipo nem parâmetros, para peças únicas e
+> orgânicas (o objeto paramétrico fica para o que se repete). Nome "Forma livre" e fase 1
+> sem edição de faces: decididos pelo revisor. Núcleo em `core/freeform/` (`shapes`,
+> `mesh`, `elements`, `commands`, `importer`, `plan`); operações `freeform.create/
+> delete/edit`; corpo `Tessellation` + `FootPrint` com a silhueta; Pset
+> `BrasBim_FormaLivre` (com a receita das formas quando vem do Assistente). Entradas:
+> Assistente (`create_freeform`, `edit_freeform`, `view_object` com `id`), Arquivo >
+> Importar forma livre (OBJ, STL, GLB), Editar > Converter em forma livre. Ligado a
+> planta, corte, 3D, transformações, excluir, camadas, tabelas e Propriedades. **O 3D e
+> os cortes leem a malha direto** (`elements.world_parts`): pelo `ifcopenshell.geom`
+> uma peça de 19 mil triângulos levava 5 s. Prévia da IA com profundidade em
+> `ui/mesh_render.py`. Testes FL01–FL12 (`test_forma_livre.py`,
+> `test_interface_forma_livre.py`). Teste real: poltrona de almofadões em 119 s (spec
+> §11). **Falta:** revisão dos seis pontos do §12; clique para posicionar a peça
+> importada; exportar 3D pelo caminho rápido; fase 2 (editar vértices, arestas e faces;
+> gerador de 3D a partir de foto).
+>
+> **Assistente com foto → objeto novo (2026‑11‑12, spec/ui 54, etapa 1 implementada):**
+> anexar imagem no painel (botão `image.svg`, colar, arrastar; até 4; reduzidas a 1568 px;
+> `PromptEdit`, `Attachment`, `prepare_image` em `ui/assistant.py`); o pedido vai como
+> linha `stream-json` (`request_message`, `--input-format stream-json`, ainda
+> `--tools ""`). Ferramentas novas: `create_object` e `edit_object_definition`
+> (`core/assistant/tools.py`, validação do editor + cálculo das peças; até 60 peças; sem
+> aninhados) e `view_object` (`ui/assistant.py`: 4 vistas com contorno das peças, vê
+> também os da biblioteca sem carregar). Instruções da IA em `mcp.INSTRUCTIONS`. Testes
+> AF01–AF08 (`test_assistente_objeto_novo.py`, `test_interface_assistente_foto.py`).
+> Teste real em 36 s (criado‑mudo desenhado; ver spec §8). **Falta:** teste com foto de
+> verdade pelo revisor; **etapa 2** (pesquisa na web, mexe no `--tools ""`, spec
+> própria); "desenhar a planta a partir de uma imagem" (spec própria).
+>
+> **Busca no Navegador (2026‑11‑12, spec/ui 53, em revisão):** campo sob o nome da seção
+> (ícone próprio `search.svg`), filtra a seção aberta enquanto se digita, sem acento nem
+> maiúscula, todas as palavras; árvores mostram o que casa com o que há dentro e abrem os
+> grupos com achados (fecham ao limpar só os que a busca abriu); título "x de n"; aviso
+> "Nada encontrado"; Ctrl+F (Exibir > Buscar no Navegador), Enter abre o primeiro, Esc
+> limpa; projeto novo limpa a busca. Código em `ProjectPanel.apply_filter`
+> (`brasbim/ui/project_panel.py`); testes BN00–BN04 em `tests/test_busca_navegador.py`.
 
 > **Fórum (2026‑11‑10), no ar em https://brasbim.org/#forum:** o fórum é o **GitHub
 > Discussions** do repositório. Categorias renomeadas à mão: Avisos, **Ideias**, Dúvidas,
@@ -1040,6 +1228,7 @@ renomeada para `ootaviopaz`).*
 | `spec/ui/38-area-de-selecao` | **em revisão**; núcleo do Esticar feito (AS01–AS04 em `tests/test_area_selecao.py`); §2, §4, §5 a fazer |
 | `spec/ui/42-limpeza-da-janela` | **em revisão**, implementada (LJ01–LJ07 em `tests/test_interface_limpeza.py`) |
 | `spec/ui/41-dwg-solidos-perfil-complexo` | §2 DWG/DXF **implementado** e validado num CAD; (a)–(n) respondidos; §4 perfil: **etapa 1 feita** (editor + viga + pilar; PC01, PC02, PC04, PC06, PC07, PC10), etapas 2–4 a fazer; §3 sólidos a fazer |
+| `spec/ui/55-estilo-de-anotacao-localizar-ajustes-copia` | aprovada (2026‑11‑23), implementada (EA01–EA05, LS01–LS07, AJ01–AJ06, CA01–CA04); o que fica no §7a |
 | `spec/ui/40-reticencias-paineis-e-orientacao-3d` | **em revisão**, implementada (RT01, PN01–PN02, OR01–OR03) |
 | `spec/ui/37-linhas-guia` | **em revisão**, implementada (LG01–LG06 em `tests/test_linhas_guia.py`); pontos §9 |
 | `spec/ui/34-barra-de-ferramentas` | **em revisão**: §2 ícones isométricos e §3 barra dimensionável com grupos feitos (UI34 em `tests/test_interface_barras.py`); §4 ferramentas de vista/documentação a fazer (depois da pesquisa complementar) |

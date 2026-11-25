@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QCursor, QPainter, QPainterPath, QPalette, QPen, QPixmap
-from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QLineEdit
+from PySide6.QtWidgets import QApplication, QFrame, QGridLayout, QLabel, QLineEdit
 
 from brasbim.core import units
 from brasbim.ui import theme
@@ -27,6 +27,21 @@ def _first_is_length(tool) -> bool:
     a ferramenta não tem campos, como o arrasto de alças)."""
     fields = tool.fields()
     return not fields or fields[0].unit == "m"
+
+def tool_busy(tool) -> bool:
+    """A ferramenta está no meio de algo (pontos clicados ou arrasto)."""
+    return bool(getattr(tool, "points", None)) or getattr(tool, "drag", None) is not None \
+        or getattr(tool, "drag3d", None) is not None
+
+
+def settings_cursor(apply: bool) -> QCursor:
+    """Conta-gotas (pegar) ou gota (aplicar), dos ícones próprios (spec/ui 55 §4.1)."""
+    from brasbim.ui import icons
+
+    name = "apply_settings" if apply else "pick_settings"
+    pixmap = icons.icon(name).pixmap(24, 24)
+    return QCursor(pixmap, 12 if apply else 4, 20)
+
 
 ROWS = 3
 _CURSOR_GAP = 16  # distância do quadro ao cursor, em pixels
@@ -409,6 +424,13 @@ class ToolInput:
 
     def after_tool_input(self) -> None:
         tool = self.toolbox.active
+        if tool.handoff is not None:  # outra ferramenta continua (spec/ui 55 §5)
+            name, setup = tool.handoff
+            tool.handoff = None
+            self.tool_requested.emit(name)
+            if self.toolbox.active.name == name:
+                self.toolbox.active.take(setup)
+            tool = self.toolbox.active
         if tool.finished:
             tool.finished = False
             self.tool_finished.emit()
@@ -421,13 +443,78 @@ class ToolInput:
         """Cruz com o quadradinho de captura na ferramenta Selecionar (spec/ui 28 §2)."""
         if getattr(self, "_space", False):
             return
-        if self.toolbox.active.name == "select":
+        if self.toolbox.active.copying():  # cópia ao arrastar: + junto ao cursor
+            self.setCursor(Qt.DragCopyCursor)
+        elif self.toolbox.active.name == "select":
             self.setCursor(pick_cursor())
         else:
             self.unsetCursor()
 
+    # Elemento realçado sob o conta-gotas ou a gota (Alt ou Ctrl+Alt seguros).
+    settings_target: str | None = None
+    _settings_cursor_on = False
+
+    def element_at(self, pos) -> str | None:
+        """Elemento sob a posição da tela (cada vista sabe achar o dela)."""
+        return None
+
+    def settings_click(self, pos, mods) -> bool:
+        """Alt+clique num elemento pega os ajustes dele; Ctrl+Alt+clique aplica os pegos
+        (spec/ui 55 §4.1). Só com a ferramenta parada: no meio de um desenho, Alt continua
+        sendo o clique sem atração."""
+        if not mods.alt or tool_busy(self.toolbox.active):
+            return False
+        gid = self.element_at(pos)
+        if not gid:
+            return False
+        self.settings_clicked.emit(gid, bool(mods.ctrl))
+        self.after_tool_input()
+        return True
+
+    def settings_cursor(self, mods=None) -> None:
+        """Com Alt (pegar) ou Ctrl+Alt (aplicar) e a ferramenta parada: cursor de
+        conta-gotas ou de gota e o elemento sob ele realçado; senão, o cursor da
+        ferramenta."""
+        if mods is None:
+            mods = QApplication.keyboardModifiers()
+        active = bool(mods & Qt.AltModifier) and not tool_busy(self.toolbox.active)
+        target = None
+        if active and self.mouse_pos is not None and self.underMouse():
+            target = self.element_at(self.mouse_pos)
+        if active:
+            self.setCursor(settings_cursor(bool(mods & Qt.ControlModifier)))
+        elif self._settings_cursor_on:
+            self.apply_cursor()
+        self._settings_cursor_on = active
+        if target != self.settings_target:
+            self.settings_target = target
+            self.update()
+
+    def settings_key(self, event) -> bool:
+        """Alt e Ctrl ligam e desligam o conta-gotas. O Alt sozinho fica com a vista: no
+        Windows ele levaria o foco ao menu (Arquivo), e a planta pararia de receber as
+        teclas até um novo Alt."""
+        if event.type() not in (QEvent.ShortcutOverride, QEvent.KeyPress, QEvent.KeyRelease)                 or event.key() not in (Qt.Key_Alt, Qt.Key_Control):
+            return False
+        if event.type() != QEvent.ShortcutOverride:
+            # a própria tecla vale como apertada (KeyPress) ou solta (KeyRelease), mesmo
+            # quando o evento não a traz nos modificadores
+            flag = Qt.AltModifier if event.key() == Qt.Key_Alt else Qt.ControlModifier
+            mods = event.modifiers()
+            if event.type() == QEvent.KeyPress:
+                mods = mods | flag
+            elif mods & flag:  # sem "~": num modificador sozinho, o Qt zera tudo
+                mods = mods ^ flag
+            self.settings_cursor(mods)
+        if event.key() == Qt.Key_Alt:
+            event.accept()
+            return True
+        return False
+
     def tool_event(self, event) -> bool:
         """Tab é da ferramenta (spec/ui 01 §5.5, 07 §2.2), não troca o foco."""
+        if self.settings_key(event):
+            return True
         if event.type() == QEvent.KeyPress and event.key() in (Qt.Key_Tab, Qt.Key_Backtab):
             tool = self.toolbox.active
             if tool.fields():
@@ -457,6 +544,8 @@ class ToolInput:
                 tool.move(tool.cursor, tool.mods)
         elif key == Qt.Key_Space and not event.isAutoRepeat() and tool.key("space"):
             self.tool_options_changed.emit()  # o pilar girou: a barra Opções mostra o ângulo
+        elif key == Qt.Key_Control and not event.isAutoRepeat() and tool.key("ctrl"):
+            pass  # cópia ao arrastar (spec/ui 55 §5)
         elif text and (text.isdigit() or text in ",.-") and tool.wants_number():
             if tool.fields():
                 self.measure.start(0, text)

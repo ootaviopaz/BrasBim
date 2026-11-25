@@ -10,7 +10,9 @@ o preenchimento vem das regiões), ``wall_view`` (em vista: abaixo do plano, e a
 no peitoril), ``wall_above`` (acima do plano: tracejado), ``below`` (parede do pavimento
 de baixo), ``door_frame`` (marco, preenchido), ``door_leaf`` (folha), ``door_swing`` (arco
 de giro, linha fina), ``door_arrow`` (seta de correr), ``door_hidden`` (tracejada) e
-``door`` (contorno de porta de outra origem). A janela usa os mesmos papéis de porta
+``door`` (contorno de porta de outra origem). Elemento de outro programa sem desenho
+paramétrico (spec/ui 60 §3): ``foreign`` (contorno cortado, para escolher; o fundo vem
+das regiões) e ``foreign_view`` (arestas abaixo do plano, linha fina). A janela usa os mesmos papéis de porta
 para o marco, a folha aberta, o arco e a seta, e mais ``window_sash`` (faces do perfil do
 caixilho fechado) e ``window_glass`` (vidro), em linha fina (spec/ui 09 §6.2).
 
@@ -51,7 +53,6 @@ from brasbim.core import (
     intervention,
     layers,
     materials,
-    props,
     storeys,
     units,
 )
@@ -110,6 +111,7 @@ class Region:
     tint: str | None = None  # cor da situação na vista Projeto (spec/ui 31 §3)
     # Hachura da situação em Imprimir em preto (spec/ui 31 §13): pattern e angle.
     hatch: dict | None = field(default=None, hash=False)
+    pen_no: int | None = None  # pena da hachura escolhida no elemento (spec/ui 57)
 
 
 @dataclass(frozen=True)
@@ -122,6 +124,7 @@ class Edge:
     color: str
     pen: str = "cut"
     tint: str | None = None  # cor da situação na vista Projeto (spec/ui 31 §3)
+    pen_no: int | None = None  # pena do contorno escolhida no elemento (spec/ui 57)
 
 
 @dataclass
@@ -137,6 +140,8 @@ class Plan:
     locked: set = field(default_factory=set)
     # Categoria da tabela de penas das anotações, por dono (spec/ui 27 §3).
     pens: dict = field(default_factory=dict)
+    # Penas escolhidas em cada elemento: dono → {cut, fill, view} (spec/ui 57).
+    element_pens: dict = field(default_factory=dict)
     # Cor da situação de cada dono na vista Projeto (spec/ui 31 §3); vazio = sem cores.
     colors: dict = field(default_factory=dict)
     # Hachura da situação de cada dono, pelo perfil municipal (spec/ui 31 §13).
@@ -599,15 +604,20 @@ def _regions(doc: Document, plan: Plan, cuts: list[_Cut], detail: str) -> None:
     def key(w):
         tint = tints[w.wall.GlobalId]
         hatch = plan.hatches.get(w.wall.GlobalId) or {}
-        return f"{w.type_id}|{tint}|{hatch.get('pattern')}|{hatch.get('angle')}" if tint             else w.type_id
+        base = f"{w.type_id}|{tint}|{hatch.get('pattern')}|{hatch.get('angle')}" if tint \
+            else w.type_id
+        chosen = plan.element_pens.get(w.wall.GlobalId)  # penas próprias (spec/ui 57)
+        return f"{base}|pens{sorted(chosen.items())}" if chosen else base
 
     by_type = _type_regions(cuts, key)
     styles = {key(w): w.style for w in cuts}
     tint_of = {key(w): tints[w.wall.GlobalId] for w in cuts}
     hatch_of = {key(w): plan.hatches.get(w.wall.GlobalId) for w in cuts}
+    pens_of = {key(w): plan.element_pens.get(w.wall.GlobalId, {}) for w in cuts}
     layered: set[str] = set()
     if detail == "layers":
-        plain = [w for w in cuts if w.pieces and not tints[w.wall.GlobalId]]
+        plain = [w for w in cuts if w.pieces and not tints[w.wall.GlobalId]
+                 and not plan.element_pens.get(w.wall.GlobalId)]
         found = layers.regions(doc, [w.wall for w in plain],
                                {w.wall.GlobalId: w.pieces for w in plain})
         owners = {r.owner for r in found}
@@ -620,11 +630,11 @@ def _regions(doc: Document, plan: Plan, cuts: list[_Cut], detail: str) -> None:
     for k, rings in by_type.items():
         if k not in layered:
             plan.regions.append(Region(k, rings, _fill_of_type(styles[k]), tint_of[k],
-                                       hatch_of[k]))
+                                       hatch_of[k], pens_of[k].get("fill")))
     for k, rings in by_type.items():
         style = styles[k]
         plan.edges.append(Edge(rings, style["line_weight"], style["line_color"],
-                               tint=tint_of[k]))
+                               tint=tint_of[k], pen_no=pens_of[k].get("cut")))
 
 
 # --- portas --------------------------------------------------------------------------
@@ -916,17 +926,15 @@ def _slab_fill(element_type) -> dict:
     return _fill_of_type(style) if style else {"pattern": "none", "source": "type"}
 
 
-def _foreign_element(element, storey, kind: str) -> _Element | None:
-    """Elemento de outra origem: contorno convexo do corpo, visto de cima."""
-    import ifcopenshell.geom
+def _foreign_element(doc: Document, element, storey, kind: str) -> _Element | None:
+    """Elemento de outra origem: contorno convexo do corpo, visto de cima (a malha vem da
+    reserva de ``plan_foreign``, para não ser refeita a cada desenho)."""
+    from brasbim.core import plan_foreign
 
-    settings = ifcopenshell.geom.settings()
-    settings.set("use-world-coords", True)
-    try:
-        shape = props.body_shape(settings, element)
-    except RuntimeError:
+    mesh = plan_foreign.meshes(doc, [element]).get(element.GlobalId)
+    if mesh is None:
         return None
-    verts = np.array(shape.geometry.verts, dtype=float).reshape(-1, 3)
+    verts = mesh[0]
     m = np.linalg.inv(ifcopenshell.util.placement.get_local_placement(storey.ObjectPlacement))
     local = (m @ np.c_[verts, np.ones(len(verts))].T).T[:, :3]
     ring = geom2d.convex_hull([(float(x), float(y)) for x, y, _ in local])
@@ -943,7 +951,7 @@ def _structure_element(doc: Document, element, storey) -> _Element | None:
     try:
         state = module.read_state(doc, element)
         if state["foreign"] is not None:
-            return _foreign_element(element, storey, kind)
+            return _foreign_element(doc, element, storey, kind)
         element_type = doc.get(state["type"])
         if kind == "column":
             ring = columns.outline(doc, state)
@@ -1037,6 +1045,22 @@ def _section_text(element_type) -> str:
     return profiles.label(section).replace(" × ", "×").replace("Ø ", "Ø")
 
 
+def _beam_strip(ring) -> list | None:
+    """Retângulo mínimo em volta de um contorno de viga que não tem 4 vértices (IFC de
+    outro programa), na ordem a→b pelo lado comprido, como a faixa das vigas do BrasBim."""
+    from shapely.geometry import MultiPoint, Polygon
+
+    if len(ring) < 3:
+        return None
+    box = MultiPoint([tuple(p[:2]) for p in ring]).minimum_rotated_rectangle
+    if not isinstance(box, Polygon):
+        return None
+    pts = list(box.exterior.coords)[:4]
+    if math.dist(pts[0], pts[1]) < math.dist(pts[1], pts[2]):
+        pts = pts[1:] + pts[:1]
+    return pts
+
+
 def structure_labels(found: list[_Element]) -> list[Label]:
     """Etiquetas de pilar ("P1" e, abaixo, "20×40", junto ao canto de cima à direita) e de
     viga ("V1 14×40" no meio dela, girada com ela, de leitura da esquerda para a direita
@@ -1052,7 +1076,12 @@ def structure_labels(found: list[_Element]) -> list[Label]:
             out.append(Label(element.GlobalId, (max(xs) + LABEL_OFFSET, max(ys) + LABEL_OFFSET),
                              element.Name, size, "structure"))
             continue
-        a, b, c, d = e.ring  # faixa: direita (a→b) e esquerda (d→c)
+        ring = e.ring
+        if len(ring) != 4:  # viga importada com contorno qualquer: o retângulo que a envolve
+            ring = _beam_strip(ring)
+            if ring is None:
+                continue
+        a, b, c, d = ring  # faixa: direita (a→b) e esquerda (d→c)
         dx, dy = b[0] - a[0], b[1] - a[1]
         angle = math.degrees(math.atan2(dy, dx))
         if angle > 90.0 + 1e-9 or angle <= -90.0 + 1e-9:  # sempre legível
@@ -1088,6 +1117,8 @@ def _structure_regions(plan: Plan, found: list[_Element], cut: float, kinds) -> 
         ring = [list(r) for r in e.lines] if e.kind == "slab" else [list(e.ring)]
         tint = plan.colors.get(e.element.GlobalId)
         hatch = plan.hatches.get(e.element.GlobalId)
+        chosen = plan.element_pens.get(e.element.GlobalId, {})  # spec/ui 57
+        fill_pen, cut_pen = chosen.get("fill"), chosen.get("cut")
         if z0 < cut < z1 and e.cut_rings is not None:
             ring = e.cut_rings
         if z0 < cut < z1:
@@ -1098,14 +1129,18 @@ def _structure_regions(plan: Plan, found: list[_Element], cut: float, kinds) -> 
                         rings = clip.intersection(rings, e.cut_rings)
                         if not rings:
                             continue
-                    plan.regions.append(Region(e.element.GlobalId, rings, fill, tint, hatch))
+                    plan.regions.append(Region(e.element.GlobalId, rings, fill, tint, hatch,
+                                               fill_pen))
                     plan.edges.append(Edge(rings, LAYER_WEIGHT, materials.LINE_COLOR,
-                                           tint=tint))
+                                           tint=tint, pen_no=cut_pen))
             else:
-                plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint, hatch))
-            plan.edges.append(Edge(ring, e.edge_weight, materials.LINE_COLOR, tint=tint))
+                plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint, hatch,
+                                           fill_pen))
+            plan.edges.append(Edge(ring, e.edge_weight, materials.LINE_COLOR, tint=tint,
+                                   pen_no=cut_pen))
         elif e.kind == "slab" and z1 <= cut and e.fill["pattern"] != "none":
-            plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint, hatch))
+            plan.regions.append(Region(e.element.GlobalId, ring, e.fill, tint, hatch,
+                                       chosen.get("view") or fill_pen))
 
 
 def _carve(plan: Plan, first_region: int, first_edge: int, holes: Rings) -> None:
@@ -1114,10 +1149,10 @@ def _carve(plan: Plan, first_region: int, first_edge: int, holes: Rings) -> None
     if not holes:
         return
     plan.regions[first_region:] = [Region(r.key, clip.difference(r.rings, holes), r.fill,
-                                          r.tint, r.hatch)
+                                          r.tint, r.hatch, r.pen_no)
                                    for r in plan.regions[first_region:]]
     plan.edges[first_edge:] = [Edge(clip.difference(e.rings, holes), e.weight, e.color, e.pen,
-                                    e.tint)
+                                    e.tint, e.pen_no)
                                for e in plan.edges[first_edge:]]
 
 
@@ -1170,9 +1205,12 @@ def storey_plan(doc: Document, storey, show_below: bool = True, detail: str = "s
 def _storey_plan(doc: Document, storey, show_below: bool, detail: str,
                  show_above: bool) -> Plan:
     marks = intervention.marks(doc)
+    from brasbim.core import element_pens
+
     plan = Plan(locked=display_layers.locked_ids(doc),
                 colors={gid: color for gid, (color, _) in marks.items()},
-                hatches={gid: hatch for gid, (_, hatch) in marks.items()})
+                hatches={gid: hatch for gid, (_, hatch) in marks.items()},
+                element_pens=element_pens.plan_pens(doc))
     if show_below:
         storeys_ = doc.storeys()
         i = storeys_.index(storey)
@@ -1225,6 +1263,7 @@ def _storey_plan(doc: Document, storey, show_below: bool, detail: str,
     _skylights(doc, storey, plan)
     _stairs_and_railings(doc, storey, plan, cut)
     _objects(doc, storey, plan, cut)
+    _foreign(doc, storey, plan, cut)
     _roofs(doc, storey, plan, cut, show_above)
     _documentation(doc, storey, plan)
     from brasbim.core import pens
@@ -1232,6 +1271,36 @@ def _storey_plan(doc: Document, storey, show_below: bool, detail: str,
     plan.pens = {gid: pens.annotation_category(doc, doc.find(gid))
                  for gid in {owner for owner, _ in plan.annotations}}
     return plan
+
+
+def _foreign(doc: Document, storey, plan: Plan, cut: float) -> None:
+    """Elementos de outro programa que nada acima desenhou (parede sem as camadas do
+    BrasBim, escada, móvel, fachada-cortina…): pela malha, cortados e em vista (spec/ui
+    60 §3)."""
+    from brasbim.core import plan_foreign
+
+    drawn = {s.owner for s in plan.shapes} | {lb.owner for lb in plan.labels}
+    hidden = display_layers.hidden_ids(doc)
+    elements = []
+    for e in _decompose(storey):
+        if e.GlobalId in drawn or e.GlobalId in hidden or not plan_foreign.is_foreign(e):
+            continue
+        owner = plan_foreign.owner_of(e)
+        if owner.GlobalId not in drawn and owner.GlobalId not in hidden:
+            elements.append(e)
+    if not elements:
+        return
+    cut_rings, view = plan_foreign.draw(doc, storey, elements, cut)
+    for owner, lines in view.items():
+        plan.shapes += [Shape(owner, "foreign_view", tuple(line), False) for line in lines]
+    for owner, rings in cut_rings.items():
+        tint = plan.colors.get(owner)
+        chosen = plan.element_pens.get(owner, {})  # spec/ui 57
+        plan.regions.append(Region(owner, rings, {"pattern": "none", "source": "type"}, tint,
+                                   plan.hatches.get(owner), chosen.get("fill")))
+        plan.edges.append(Edge(rings, CUT_WEIGHT, materials.LINE_COLOR, tint=tint,
+                               pen_no=chosen.get("cut")))
+        plan.shapes += [Shape(owner, "foreign", tuple(r), True) for r in rings]
 
 
 CEILING_MM = 0.13  # projeção do forro (revisão de 2026-11-07)
@@ -1379,6 +1448,12 @@ def _objects(doc: Document, storey, plan: Plan, cut: float) -> None:
             label = None
         if label is not None:
             plan.labels.append(label)
+    from brasbim.core.freeform import elements as freeform
+    from brasbim.core.freeform import plan as freeform_plan
+
+    for element in sorted((e for cls in freeform.CLASSES for e in _contained(storey, cls, doc)
+                           if freeform.is_freeform(e)), key=lambda e: e.GlobalId):
+        plan.shapes += freeform_plan.shapes(doc, element, storey, cut)
 
 
 # --- cobertura (cobertura.md §7) -----------------------------------------------------------

@@ -21,7 +21,7 @@ from pathlib import Path
 
 import ifcopenshell
 
-from brasbim.core import display_layers, intervention, units
+from brasbim.core import display_layers, element_pens, intervention, units
 from brasbim.core.collab import Client, Server, protocol
 from brasbim.core.document import Document, OpError
 from brasbim.core.fillings import commands as fc
@@ -226,12 +226,19 @@ class Session:
         self.history.journal = list(history.journal)
         self._write_journal()
 
-    def open(self, path: str) -> None:
-        doc = Document.open(path)
+    def open(self, path: str, progress=None) -> None:
+        doc = Document.open(path, progress)
         self.leave()
         doc.display = display_layers.read_display(doc)  # spec/ui 18 §5.1
-        self._attach(doc, path)
+        # convertido (spec/ui 60): Salvar pede um nome, para não gravar 4.3 por cima do
+        # arquivo de origem
+        self._attach(doc, None if doc.converted_from else path, modified=bool(
+            doc.converted_from))
         self.message(f"Aberto: {path}")
+        if doc.converted_from:
+            self.message(f"Arquivo convertido para o IFC 4.3, em metros (origem: "
+                         f"{doc.converted_from}). Ao salvar, escolha um nome: o original não "
+                         "é alterado (para entregar em 2x3 ou 4, use Exportar IFC).", "aviso")
         organize = display_layers.organize(doc)  # arquivo sem camadas (§3.1, CM12)
         if organize is not None:
             self.history.commit(organize)
@@ -319,6 +326,8 @@ class Session:
                 return False
             # Situação dos novos elementos (opção da ferramenta, spec/ui 31 §2).
             tx = intervention.stamp_created(self.doc, tx, self.new_situation)
+            # Penas das próximas criações (barra Opções da ferramenta, spec/ui 57).
+            tx = element_pens.stamp_created(self.doc, tx, self.new_pens)
             self._check_layers(tx)
             self.history.commit(tx)
         except OpError as e:
@@ -384,6 +393,14 @@ class Session:
     # --- situação (spec/ui 31) -----------------------------------------------------------
 
     new_situation = intervention.DEFAULT  # opção "Situação dos novos elementos" (§2)
+
+    @property
+    def new_pens(self) -> dict:
+        """Grupo → penas das próximas criações (spec/ui 57); da sessão, não do arquivo."""
+        found = self.__dict__.get("_new_pens")
+        if found is None:
+            found = self.__dict__["_new_pens"] = {}
+        return found
 
     @property
     def situation_view(self) -> str:

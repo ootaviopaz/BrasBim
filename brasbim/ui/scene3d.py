@@ -28,10 +28,13 @@ from brasbim.core import (
     layers,
     materials,
     mesh_layers,
+    plan_foreign,
     props,
     terrain,
 )
 from brasbim.core.document import OpError
+from brasbim.core.freeform import elements as freeform
+from brasbim.core.freeform import mesh as freeform_mesh
 from brasbim.core.objects import elements as objects
 from brasbim.core.structure import roofs, stairs
 from brasbim.core.structure import types as st_types
@@ -89,6 +92,10 @@ class Mesh:
     parts: dict | None = None  # parede por camadas: {material: triângulos (n, 3, 3)}
     glass: np.ndarray | None = None  # triângulos translúcidos (vidro), (n, 3) float32
     glass_colors: np.ndarray | None = None  # (n, 4): RGBA
+    # Triângulos opacos sem a divisão por camadas (parede, laje): o contorno sai deles. Os
+    # pedaços das camadas emendam no meio das arestas uns dos outros e essas emendas
+    # pareceriam bordas (linhas da janela até o canto da parede, 2026-11-24).
+    outline: np.ndarray | None = None  # (n, 3) float32
     # Contas da apresentação (luz, contorno), feitas na primeira vez que o estilo pede
     cache: dict = field(default_factory=dict, repr=False, compare=False)
 
@@ -98,6 +105,21 @@ class Mesh:
         if self.glass is None:
             return self.vertices
         return np.concatenate([self.vertices, self.glass])
+
+    @property
+    def contour_vertices(self) -> np.ndarray:
+        """Triângulos de onde sai o contorno (sem as emendas das camadas)."""
+        if self.outline is None:
+            return self.all_vertices
+        return self.outline if self.glass is None else np.concatenate([self.outline,
+                                                                       self.glass])
+
+
+def _opaque_outline(found) -> np.ndarray | None:
+    """Contorno de várias malhas juntas: o de cada uma (só se alguma tem camadas)."""
+    if all(m.outline is None for m in found):
+        return None
+    return np.concatenate([m.outline if m.outline is not None else m.vertices for m in found])
 
 
 def _shaded(vertices: np.ndarray, color) -> np.ndarray:
@@ -188,7 +210,7 @@ def feature_edges(vertices: np.ndarray, angle: float = FEATURE_ANGLE):
 def contour_of(mesh: Mesh):
     """(vivas, lisas, normais) da malha (opacos e vidros), guardadas na malha."""
     if "contour" not in mesh.cache:
-        mesh.cache["contour"] = feature_edges(mesh.all_vertices)
+        mesh.cache["contour"] = feature_edges(mesh.contour_vertices)
     return mesh.cache["contour"]
 
 
@@ -296,6 +318,45 @@ def _all_parts(element) -> list:
     return out
 
 
+class MeshTable(dict):
+    """Malhas da cena por GlobalId; ``version`` muda a cada alteração, para o desenho
+    refazer os lotes que junta para a placa de vídeo (``view3d._Batch``) só quando
+    preciso."""
+
+    version = 0
+
+    def _bump(self) -> None:
+        self.version += 1
+
+    def __setitem__(self, key, value) -> None:
+        super().__setitem__(key, value)
+        self._bump()
+
+    def __delitem__(self, key) -> None:
+        super().__delitem__(key)
+        self._bump()
+
+    def pop(self, *args):
+        self._bump()
+        return super().pop(*args)
+
+    def popitem(self):
+        self._bump()
+        return super().popitem()
+
+    def clear(self) -> None:
+        super().clear()
+        self._bump()
+
+    def update(self, *args, **kwargs) -> None:
+        super().update(*args, **kwargs)
+        self._bump()
+
+    def setdefault(self, key, default=None):
+        self._bump()
+        return super().setdefault(key, default)
+
+
 class Scene:
     """Malhas por GlobalId."""
 
@@ -304,7 +365,7 @@ class Scene:
 
     def __init__(self):
         self.doc = None  # Document: com ele, paredes com cor por camada (spec/ui 06 §5)
-        self._meshes: dict[str, Mesh] = {}
+        self._meshes: MeshTable = MeshTable()
         # Pedidos adiados (``defer_update``/``defer_load``): feitos na primeira leitura de
         # ``meshes``, isto é, quando alguém (a vista 3D na tela, a imagem da prancha, a
         # escolha por raio) precisa das malhas. Com o 3D fechado, editar não triangula.
@@ -316,6 +377,7 @@ class Scene:
         self.extra_hidden: set[str] = set()  # ocultos da janela (spec/ui 39 §4)
         self._layers: dict[str, dict] = {}  # por pavimento: {parede: [(material, anéis)]}
         self._tessellations = 0
+        self._prefetched: dict = {}  # triangulação em lote durante ``load``
         self._settings = ifcopenshell.geom.settings()
         self._settings.set("use-world-coords", True)
 
@@ -369,9 +431,12 @@ class Scene:
             return entity.Representation is not None
         if any(entity.is_a(c) for c in objects.OCCURRENCE_CLASSES):
             # objeto paramétrico: os aninhados vão na malha do objeto de fora (§6.4)
-            return objects.is_object(entity)
-        return (any(entity.is_a(c) for c in self.CLASSES) and entity.Representation is not None
-                and not roofs.is_part(entity))
+            return objects.is_object(entity) or freeform.is_freeform(entity)                 or plan_foreign.is_foreign(entity)
+        if any(entity.is_a(c) for c in self.CLASSES):
+            return entity.Representation is not None and not roofs.is_part(entity)
+        # peça de outro programa de qualquer classe (montante, painel, rampa, peça
+        # genérica…): pela malha do corpo (spec/ui 60 §3)
+        return plan_foreign.is_foreign(entity)
 
     def _roof_mesh(self, roof) -> Mesh | None:
         found = [m for m in (self._mesh(p) for p in roofs.parts_of(roof)) if m is not None]
@@ -379,7 +444,8 @@ class Scene:
             return None
         return Mesh(np.concatenate([m.vertices for m in found]),
                     np.concatenate([m.colors for m in found]),
-                    np.concatenate([m.edges for m in found]), found[0].base)
+                    np.concatenate([m.edges for m in found]), found[0].base,
+                    outline=_opaque_outline(found))
 
     def _stair_mesh(self, stair) -> Mesh | None:
         """Lances, patamares e guarda-corpos numa malha só, com a cor de cada peça."""
@@ -388,7 +454,8 @@ class Scene:
             return None
         return Mesh(np.concatenate([m.vertices for m in found]),
                     np.concatenate([m.colors for m in found]),
-                    np.concatenate([m.edges for m in found]), found[0].base)
+                    np.concatenate([m.edges for m in found]), found[0].base,
+                    outline=_opaque_outline(found))
 
     def _object_mesh(self, element) -> Mesh | None:
         found = [m for m in (self._single(e) for e in [element, *_all_parts(element)])
@@ -403,7 +470,8 @@ class Scene:
                     np.concatenate([m.colors for m in found]),
                     np.concatenate([m.edges for m in found]), found[0].base,
                     glass=np.concatenate(glass) if glass else None,
-                    glass_colors=np.concatenate(glass_colors) if glass else None)
+                    glass_colors=np.concatenate(glass_colors) if glass else None,
+                    outline=_opaque_outline(found))
 
     def _mesh(self, entity) -> Mesh | None:
         if entity.is_a("IfcRoof"):
@@ -414,14 +482,34 @@ class Scene:
             return self._object_mesh(entity)
         return self._single(entity)
 
+    def _freeform_mesh(self, entity) -> Mesh | None:
+        """Forma livre: a malha gravada, com a cor do material de cada parte e só as
+        quinas e bordas como arestas (forma-livre.md §6)."""
+        color = material_color(entity)
+        names = {m.Name: m for m in entity.file.by_type("IfcMaterial")}
+        tris, colors, edges = [], [], []
+        for vertices, faces, material in freeform.world_parts(entity):
+            tri = vertices[faces].astype(np.float32).reshape(-1, 3)
+            rgb = color_of(names[material]) if material in names else color
+            tris.append(tri)
+            colors.append(_shaded(tri, rgb))
+            edges.append(vertices[freeform_mesh.crease_edges(vertices, faces)]
+                         .astype(np.float32).reshape(-1, 3))
+        if not tris:
+            return None
+        return Mesh(np.concatenate(tris), np.concatenate(colors), np.concatenate(edges), color)
+
     def _single(self, entity) -> Mesh | None:
         self._tessellations += 1
-        try:
-            shape = props.body_shape(self._settings, entity)
-        except RuntimeError as e:
-            log.debug("sem geometria 3D para %s: %s", entity.GlobalId, e)
-            return None
-        g = shape.geometry
+        if freeform.is_freeform(entity):
+            return self._freeform_mesh(entity)
+        g = self._prefetched.get(entity.id())
+        if g is None or not len(g.faces):
+            try:
+                g = props.body_shape(self._settings, entity).geometry
+            except RuntimeError as e:
+                log.debug("sem geometria 3D para %s: %s", entity.GlobalId, e)
+                return None
         verts = np.asarray(g.verts, dtype=np.float32).reshape(-1, 3)
         faces = np.asarray(g.faces, dtype=np.int64)
         edges = np.asarray(g.edges, dtype=np.int64)
@@ -432,8 +520,9 @@ class Scene:
             return Mesh(verts[faces], _shaded(verts[faces], _style_color(entity, color)),
                         _outline_edges(verts, faces), color)
         tri = verts[faces]
+        edge_points = verts[edges]
         if _styled_class(entity):
-            styled = _styled_mesh(entity, g, tri, verts[edges], color)
+            styled = _styled_mesh(entity, g, tri, edge_points, color)
             if styled is not None:
                 return styled
         layered = ((_wall_profile_layers(self.doc, entity, tri) or self._split(entity, tri))
@@ -443,7 +532,7 @@ class Scene:
                    else _profile_layers(entity, tri)
                    if entity.is_a("IfcColumn") or entity.is_a("IfcBeam") else None)
         if layered is None:
-            return Mesh(tri, _shaded(tri, color), verts[edges], color)
+            return Mesh(tri, _shaded(tri, color), edge_points, color)
         names = {m.Name: m for m in self.doc.ifc.by_type("IfcMaterial")}
         parts_tri, parts_color = [], []
         for key, part in layered.items():
@@ -451,7 +540,7 @@ class Scene:
             parts_tri.append(part.astype(np.float32).reshape(-1, 3))
             parts_color.append(_shaded(parts_tri[-1], c))
         return Mesh(np.concatenate(parts_tri), np.concatenate(parts_color), verts[edges], color,
-                    layered)
+                    layered, outline=tri.astype(np.float32).reshape(-1, 3))
 
     def _split(self, wall, tri: np.ndarray) -> dict | None:
         """Triângulos da parede por material, pelas regiões das camadas (as mesmas da
@@ -486,12 +575,27 @@ class Scene:
         self._layers.clear()
         self.meshes.clear()
         self._hidden.clear()
-        for cls in self.CLASSES:
+        wanted, seen = [], set()
+        for cls in (*self.CLASSES, "IfcElement"):  # por último, as de outro programa
             for entity in ifc.by_type(cls):
-                if self._wanted(entity):
-                    mesh = self._mesh(entity)
-                    if mesh is not None:
-                        self.meshes[entity.GlobalId] = mesh
+                if entity.id() not in seen and self._wanted(entity):
+                    seen.add(entity.id())
+                    wanted.append(entity)
+        # as de outro programa (podem ser milhares) são trianguladas juntas, em paralelo
+        foreign = [e for e in wanted if plan_foreign.is_foreign(e)]
+        if self.doc is not None and self.doc.ifc is ifc:  # a mesma reserva da planta
+            found = plan_foreign.shapes(self.doc, foreign)
+            self._prefetched = {e.id(): found[e.GlobalId] for e in foreign
+                                if e.GlobalId in found}
+        else:
+            self._prefetched = plan_foreign.geometries(ifc, foreign, self._settings)
+        try:
+            for entity in wanted:
+                mesh = self._mesh(entity)
+                if mesh is not None:
+                    self.meshes[entity.GlobalId] = mesh
+        finally:
+            self._prefetched = {}
         self.apply_layers()
 
     def apply_layers(self) -> None:
@@ -1055,7 +1159,14 @@ def _clip_mesh(mesh: Mesh, planes) -> Mesh | None:
         colors = np.concatenate([colors, np.tile(shade, (len(cap), 1))])
         edges = np.concatenate([edges.reshape(-1, 3),
                                 np.asarray(cap_edges, dtype=np.float32)])
-    return Mesh(vertices, colors, edges, mesh.base, None, glass, glass_colors)
+    outline = None
+    if mesh.outline is not None:  # o contorno recortado junto, com as tampas
+        cut, _ = _clip_polys(mesh.outline.reshape(-1, 3, 3).astype(np.float64),
+                             np.zeros((len(mesh.outline) // 3, 3, 1)), planes)
+        outline = cut.reshape(-1, 3).astype(np.float32)
+        if cap:
+            outline = np.concatenate([outline, np.asarray(cap, dtype=np.float32)])
+    return Mesh(vertices, colors, edges, mesh.base, None, glass, glass_colors, outline)
 
 
 def _cross2(ax, ay, bx, by):

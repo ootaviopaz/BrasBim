@@ -84,9 +84,9 @@ def main() -> int:
     session = Session(journal_dir=feedback_dir() / "diarios", recovery_dir=recovery_dir)
     window = MainWindow(session)
     window.install_excepthook()
-    if len(sys.argv) > 1:
-        session.open(sys.argv[1])
     window.show()
+    if len(sys.argv) > 1:
+        window.open_path(sys.argv[1])
     window.offer_recovery()  # cópia de uma sessão que não fechou (spec/ui 21 §4)
     return app.exec()
 

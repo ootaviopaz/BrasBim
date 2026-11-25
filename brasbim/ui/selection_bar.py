@@ -44,6 +44,10 @@ ACTIONS = {
     "hide": ("eye_off", "Ocultar",
              "some da planta e do 3D só nesta sessão; Exibir > Mostrar tudo traz de volta"),
     "detach": ("detach", "Soltar da parede", "o objeto fica livre, no mesmo lugar, sem o vão"),
+    "pick_settings": ("pick_settings", "Pegar ajustes",
+                      "guarda tipo, alturas, estilo, camada e situação (ou Alt+clique)"),
+    "apply_settings": ("apply_settings", "Aplicar ajustes",
+                       "leva os ajustes pegos à seleção (ou Ctrl+Alt+clique)"),
     "pick_curves": ("pick_curves", "Pegar linhas",
                     ("clique ou tecle Enter sobre as linhas do desenho para pô-las no terreno; "
                     "com Shift, todas as linhas da camada")),

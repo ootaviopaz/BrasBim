@@ -113,9 +113,13 @@ def read_state(doc: Document, wall) -> dict:
             state["fixed_height"] = float(body.Items[0].Depth)
         usage = ifcopenshell.util.element.get_material(wall, should_inherit=False)
         if wall_type and usage is not None and usage.is_a("IfcMaterialLayerSetUsage"):
+            try:
+                thickness = wall_types.thickness(wall_type)
+            except OpError:  # camadas só na parede, não no tipo (outro programa)
+                thickness = sum(layer.LayerThickness or 0.0
+                                for layer in usage.ForLayerSet.MaterialLayers)
             found = params.ref_line_from_usage(
-                usage.DirectionSense, usage.OffsetFromReferenceLine, wall_types.thickness(wall_type)
-            )
+                usage.DirectionSense, usage.OffsetFromReferenceLine, thickness)
             if found:
                 state["ref_line"], state["flip_layers"] = found
     state["common"] = _read_common(wall, wall_type)
@@ -369,3 +373,15 @@ register_inverse_pair("wall.create", _create, "wall.delete", _delete)
 register("wall.edit", _edit, invert_swap)
 register("wall.split", _split, _swap_split("wall.merge"))
 register("wall.merge", _merge, _swap_split("wall.split"))
+
+
+def is_parametric(doc: Document, wall) -> bool:
+    """Parede que o BrasBim lê e edita (a dele ou uma de outro programa com eixo e
+    camadas); as outras são só malha (spec/ui 60 §3)."""
+    if wall is None or not wall.is_a("IfcWall"):
+        return False
+    try:
+        read_state(doc, wall)
+    except (OpError, ValueError, KeyError, TypeError, AttributeError):
+        return False
+    return True

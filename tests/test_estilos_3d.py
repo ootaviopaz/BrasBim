@@ -245,3 +245,68 @@ def test_laje_seta_z_sobe_e_desce(window):
     assert tool.drag3d is None
     window.undo()
     assert sc.read_state(s.doc, s.doc.get(gid))["top_offset"] == pytest.approx(after)
+
+
+def test_contorno_da_parede_por_camadas_sem_emendas(model):
+    """Parede com camadas, janelas e pilar: o contorno é só das quinas reais. Antes, as
+    emendas da divisão por camadas viravam linhas dos cantos das janelas até os cantos
+    da parede (print do revisor, 2026-11-24)."""
+    from estrutura import column_type, created
+
+    from brasbim.core.fillings import commands as fc
+    from brasbim.core.structure import commands as sc
+    from brasbim.ui.scene3d import Scene, _clip_mesh, contour_of
+
+    wall = model.wall((0, 0), (8, 0))
+    window_type = model.doc.get(model.commit(fc.create_window_type(model.doc, "J1")).ops[0].id)
+    for at in (2.0, 5.0):
+        model.commit(fc.create_window(model.doc, window_type, wall, at))
+    created(model, sc.create_column(model.doc, column_type(model), model.terreo, (4.0, 0.07)))
+    scene = Scene()
+    scene.load(model.doc.ifc, model.doc)
+    mesh = scene.meshes[wall.GlobalId]
+    assert mesh.parts is not None  # a parede está mesmo dividida por camadas
+    hard, _, _ = contour_of(mesh)
+    assert len(hard) == len(mesh.edges)  # as mesmas quinas do IfcOpenShell
+    cut = _clip_mesh(mesh, [(1.0, 0.0, -3.0)])  # caixa de corte: o contorno vem junto
+    assert len(contour_of(cut)[0]) <= len(cut.edges)
+
+
+def test_e3d06_cena_grande_em_lote(monkeypatch):
+    """Cena com muitas malhas (spec/ui 60 §3): as faces vão num desenho só, guardado na
+    placa de vídeo e refeito só quando a tabela muda; a selecionada vai por cima."""
+    from brasbim.ui.scene3d import Camera, MeshTable
+
+    calls = []
+
+    class Name(str):
+        def __or__(self, other):
+            return Name(f"{self}|{other}")
+
+    class FakeGL:
+        def __getattr__(self, name):
+            if name.startswith("GL_"):
+                return Name(name)
+            return lambda *a: calls.append((name, a)) or 1
+
+    monkeypatch.setattr(view3d, "GL", FakeGL())
+    monkeypatch.setattr(view3d, "BATCH_MIN", 3)
+    table = MeshTable()
+    for i in range(5):
+        tri = (_box() + i * 2).astype(np.float32)
+        table[f"m{i}"] = Mesh(tri, np.ones_like(tri), np.zeros((0, 3), np.float32), (1, 1, 1))
+    scene = type("S", (), {"meshes": table})()
+    view3d.draw_scene(scene, Camera(), 1.5)
+    triangles = [c for c in calls if c[0] == "glDrawArrays" and c[1][0] == "GL_TRIANGLES"]
+    assert len(triangles) == 1 and triangles[0][1][2] == sum(
+        len(m.vertices) for m in table.values())
+    uploads = sum(1 for c in calls if c[0] == "glBufferData")
+    calls.clear()
+    view3d.draw_scene(scene, Camera(), 1.5, selected={"m2"})
+    assert not [c for c in calls if c[0] == "glBufferData"]  # nada enviado de novo
+    assert len([c for c in calls if c[0] == "glDrawArrays"
+                and c[1][0] == "GL_TRIANGLES"]) == 2  # a cena e a selecionada por cima
+    calls.clear()
+    del table["m4"]  # a tabela mudou: o lote é refeito
+    view3d.draw_scene(scene, Camera(), 1.5)
+    assert sum(1 for c in calls if c[0] == "glBufferData") == uploads

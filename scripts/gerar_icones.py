@@ -276,6 +276,17 @@ ICONS = {
     "view_rotate": '<path d="M8.4 6.6 L17.4 9.4 L15.6 17.4 L6.6 14.6 Z" stroke-width="1"/>'
                    '<path d="M20.5 12 A8.5 8.5 0 1 1 15 4.1"/>'
                    '<path d="M14.5 1.75 L16.5 4.4 L13.75 6.25"/>',
+    # pegar ajustes (spec/ui 55 §4): conta-gotas inclinado, bulbo cheio no alto
+    "pick_settings": '<path d="M4 20 L5 16.5 L13 8.5 L15.5 11 L7.5 19 Z"/>'
+                     '<path d="M11.5 7 L17 12.5"/>'
+                     '<circle cx="17.25" cy="6.75" r="3" fill="currentColor"/>',
+    # aplicar ajustes: gota sobre um quadrado
+    "apply_settings": '<path d="M12 2.5 C10 6 7.5 8.5 7.5 11 A4.5 4.5 0 0 0 16.5 11 '
+                      'C16.5 8.5 14 6 12 2.5 Z" fill="currentColor"/>'
+                      '<rect x="4.75" y="17.75" width="14.5" height="3.5"/>',
+    # localizar e substituir (spec/ui 55 §3): lupa com uma linha de critério
+    "find": '<circle cx="10" cy="10" r="6.25"/><path d="M14.75 14.75 L21 21"/>'
+            '<path d="M7 10 H13" stroke-width="1"/>',
 }
 
 # Ferramentas de modelagem em isometria (spec/ui 34 §2): substituem os desenhos em planta.

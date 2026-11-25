@@ -32,7 +32,7 @@ import numpy as np
 import shapely
 
 from brasbim.core import guid, materials, props, storeys
-from brasbim.core.document import Document, OpError, local_placement
+from brasbim.core.document import Document, OpError, local_placement, of_type
 from brasbim.core.ops.base import Op, check_before, invert_swap, register, register_inverse_pair
 
 PSET = "BrasBim_Terreno"
@@ -54,7 +54,7 @@ def is_terrain(entity) -> bool:
 
 
 def all_terrains(doc: Document) -> list:
-    return sorted((e for e in doc.ifc.by_type("IfcGeographicElement") if is_terrain(e)),
+    return sorted((e for e in of_type(doc.ifc, "IfcGeographicElement") if is_terrain(e)),
                   key=lambda e: e.GlobalId)
 
 

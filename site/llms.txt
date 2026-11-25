@@ -1,6 +1,6 @@
 # BrasBim
 
-> Software BIM de arquitetura gratuito, de código aberto e brasileiro (pt-BR), com o IFC 4.3 como arquivo do projeto. Para Windows e macOS. Versão 0.0.1, de teste.
+> Software BIM de arquitetura gratuito, de código aberto e brasileiro (pt-BR), com o IFC 4.3 como arquivo do projeto. Para Windows e macOS. Versão 0.0.2, de teste.
 
 BrasBim modela paredes, pilares, vigas, lajes, coberturas, escadas, portas, janelas, forro e piso, e gera plantas, cortes, fachadas, pranchas em PDF, tabelas e quadro de áreas pelas normas ABNT (NBR 6492, NBR 16752). Exporta IFC 2x3, IFC 4, IFC 4.3, DWG/DXF, glTF e OBJ. Licenças: GPL-3.0 (aplicativo), LGPL-3.0 (núcleo), CC BY 4.0 (biblioteca). Criado por Otávio Paz.
 
@@ -32,7 +32,7 @@ Windows 10 e 11 (64 bits), com instalador que não pede administrador, e macOS e
 
 ### O BrasBim já está pronto para uso profissional?
 
-Ainda não: a versão 0.0.1 é de teste e está em desenvolvimento aberto. Vale experimentar e relatar o que falta no GitHub, onde estão o código, as especificações e o roteiro.
+Ainda não: a versão 0.0.2 é de teste e está em desenvolvimento aberto. Vale experimentar e relatar o que falta no GitHub, onde estão o código, as especificações e o roteiro.
 
 ## Links
 

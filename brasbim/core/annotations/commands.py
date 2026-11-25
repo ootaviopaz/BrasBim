@@ -82,7 +82,7 @@ def create_space_in_room(doc: Document, storey, point, **options) -> Transaction
 
 def create_annotation(doc: Document, prefix: str, storey, **fields) -> Transaction:
     kind = base.KINDS[prefix]
-    unknown = set(fields) - set(kind.defaults)
+    unknown = set(fields) - {*kind.defaults, *base.OPTIONAL, *kind.optional}
     if unknown:
         raise OpError(f"parâmetros desconhecidos: {sorted(unknown)}")
     data = {**copy.deepcopy(kind.defaults), **copy.deepcopy(fields),
@@ -101,7 +101,7 @@ def _clean(prefix: str, data: dict) -> None:
     for key in ("at", "label_at"):
         if data.get(key) is not None:
             data[key] = [float(data[key][0]), float(data[key][1])]
-    if prefix == "line2d":
+    if prefix == "line2d" and "points" in data:
         data["points"] = [[float(p[0]), float(p[1])] for p in data["points"]]
 
 
@@ -119,10 +119,12 @@ def dimension_points(items) -> list[dict]:
 
 
 def create_dimension(doc: Document, storey, points, direction: str = "aligned",
-                     angle: float = 0.0, offset: float = 0.0) -> Transaction:
-    """Cota pelos ``points`` (soltos ou ``(ponto, referência)``, spec/ui 13 §4)."""
+                     angle: float = 0.0, offset: float = 0.0, **extra) -> Transaction:
+    """Cota pelos ``points`` (soltos ou ``(ponto, referência)``, spec/ui 13 §4); ``extra``:
+    estilo, marcador e textos (spec/ui 55 §2)."""
     return create_annotation(doc, "dimension", storey, points=dimension_points(points),
-                             direction=direction, angle=float(angle), offset=float(offset))
+                             direction=direction, angle=float(angle), offset=float(offset),
+                             **extra)
 
 
 def edit_element(doc: Document, element, **changes) -> Transaction:
@@ -135,7 +137,8 @@ def edit_element(doc: Document, element, **changes) -> Transaction:
     state = read_state(doc, element)
     prefix = prefix_of(element)
     keys = (spaces.STATE_KEYS if prefix == "space" else views.STATE_KEYS if prefix == "view"
-            else (*base.KINDS[prefix].defaults, "storey", *state))  # (campo antigo: sai)
+            else (*base.KINDS[prefix].defaults, "storey", *state, *base.OPTIONAL,
+                  *base.KINDS[prefix].optional))  # (campo antigo: sai)
     unknown = set(changes) - set(keys)
     if unknown:
         raise OpError(f"parâmetros desconhecidos: {sorted(unknown)}")
@@ -147,6 +150,13 @@ def edit_element(doc: Document, element, **changes) -> Transaction:
     if prefix == "space" and changes.get("seed") is not None:
         changes["seed"] = [float(changes["seed"][0]), float(changes["seed"][1])]
     _clean(prefix, changes)
+    if "style" in changes:  # spec/ui 55 §2.1: só os campos escolhidos; vazio sai
+        from brasbim.core.annotations import style
+
+        style.validate(changes["style"])
+        changes["style"] = style.clean(changes["style"]) or None
+    if "texts" in changes and not changes["texts"]:
+        changes["texts"] = None
     if prefix not in ("space", "view"):
         base.KINDS[prefix].validate({**state, **changes})
     changes = {k: v for k, v in changes.items() if v != state.get(k)}
@@ -154,7 +164,7 @@ def edit_element(doc: Document, element, **changes) -> Transaction:
     if not changes:
         return Transaction(f"Editar {noun}", [])
     return Transaction(f"Editar {noun}", [Op(f"{prefix}.edit", element.GlobalId,
-                                             before={k: copy.deepcopy(state[k])
+                                             before={k: copy.deepcopy(state.get(k))
                                                      for k in changes},
                                              after=copy.deepcopy(changes))])
 

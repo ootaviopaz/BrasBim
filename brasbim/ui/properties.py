@@ -45,10 +45,12 @@ from brasbim.core.annotations import commands as ac
 from brasbim.core.annotations import dimensions as annotation_dims
 from brasbim.core.annotations import drafting, drawing2d
 from brasbim.core.annotations import spaces as space_data
+from brasbim.core.annotations import style as annotation_style
 from brasbim.core.document import OpError
 from brasbim.core.drawings import masters, saved_views, sheets, views
 from brasbim.core.fillings import commands as fc
 from brasbim.core.fillings import door_types, doors, params, window_types
+from brasbim.core.freeform import elements as freeform
 from brasbim.core.objects import elements as objects
 from brasbim.core.ops import Transaction
 from brasbim.core.ops.history import combine
@@ -71,6 +73,7 @@ from brasbim.core.walls import openings, rebuild, roof_top, top
 from brasbim.core.walls import params as wall_params
 from brasbim.core.walls import types as wall_types
 from brasbim.core.walls.wall import common_defaults as wall_common_defaults
+from brasbim.core.walls.wall import is_parametric
 from brasbim.core.walls.wall import read_state as read_wall
 from brasbim.ui import icons, theme
 from brasbim.ui.tools import block_grid, fmt, fmt_len, parse_number
@@ -240,6 +243,7 @@ class PropertiesPanel(QScrollArea):
         self.edit_project_info = None  # dados do projeto para o carimbo (idem)
         self.edit_object_type = None  # editar tipo de objeto paramétrico (idem)
         self.edit_object = None  # editor do objeto paramétrico (idem)
+        self.freeform_proportional = True  # forma livre: esticar mantendo a proporção
         self.lying = False  # arranjo deitado (spec/ui 04 §2)
         self.lines = 0  # linhas por bloco no arranjo deitado
         self.refresh()
@@ -277,7 +281,7 @@ class PropertiesPanel(QScrollArea):
             self._table(active)
         elif len(selection) == 1 and tables.is_table(selection[0]):
             self._table(selection[0])
-        elif len(selection) == 1 and selection[0].is_a("IfcWall"):
+        elif len(selection) == 1 and is_parametric(self.session.doc, selection[0]):
             self._wall(selection[0])
         elif len(selection) == 1 and skylights.is_skylight(selection[0]):
             self._skylight(selection[0])
@@ -304,12 +308,14 @@ class PropertiesPanel(QScrollArea):
             getattr(self, _misc_kind(selection[0]))(selection[0])
         elif len(selection) == 1 and objects.is_object(selection[0]):
             self._object(selection[0])
+        elif len(selection) == 1 and freeform.is_freeform(selection[0]):
+            self._freeform(selection[0])
         elif len(selection) == 1 and sc.is_structure(selection[0]):
             {"IfcColumn": self._column, "IfcBeam": self._beam, "IfcSlab": self._slab,
              "IfcRoof": self._roof}[selection[0].is_a()](selection[0])
         elif selection:
             self._title(f"{len(selection)} elementos selecionados")
-            walls = [e for e in selection if e.is_a("IfcWall")]
+            walls = [e for e in selection if is_parametric(self.session.doc, e)]
             door_list = [e for e in selection if e.is_a("IfcDoor")]
             window_list = [e for e in selection if e.is_a("IfcWindow")
                            and not skylights.is_skylight(e)]
@@ -331,9 +337,13 @@ class PropertiesPanel(QScrollArea):
                              if not any(e.is_a(c) for c in known) and not objects.is_object(e))
             for cls, n in sorted(others.items()):
                 self._add(cls, QLabel(str(n)))
+            notes = [e for e in selection if annotation_style.styled(e)]
+            if notes:  # várias anotações: o estilo vale para todas (spec/ui 55 §2.3)
+                self._annotation_style(notes)
         else:
             self._tool_options()
         if active is None and selection:
+            self._element_pens_field(selection)  # spec/ui 57
             self._layer_field(selection)
         if active is None and len(selection) == 1:
             self._solid_field(selection[0])
@@ -1354,8 +1364,129 @@ class PropertiesPanel(QScrollArea):
             self._read("Medidas", " · ".join(annotation_dims.fmt(v) for v in values))
             held = sum(1 for p in state["points"] if p.get("ref") and not p.get("lost"))
             self._read("Pontos presos", f"{held} de {len(state['points'])}")
+            self._dimension_text(element, state, values)
+        if annotation_style.styled(element):
+            self._annotation_style([element])
         self._section("Identificação")
         self._read("GlobalId", element.GlobalId)
+
+    def _dimension_text(self, element, state, values) -> None:
+        """Texto de cada trecho, prefixo, sufixo, casas e marcador (spec/ui 55 §2.2)."""
+        doc = self.session.doc
+
+        def edit(**changes):
+            self._run(lambda: ac.edit_element(doc, element, **changes))
+
+        self._section("Texto da cota")
+        self._text("Prefixo", state.get("prefix") or "", lambda v: edit(prefix=v or None))
+        self._text("Sufixo", state.get("suffix") or "", lambda v: edit(suffix=v or None))
+        self._combo("Casas decimais", [("Do projeto", None)] + [(str(n), n) for n in range(5)],
+                    state.get("decimals"), lambda v: edit(decimals=v))
+        texts = dict(state.get("texts") or {})
+        for i, value in enumerate(values):
+            measure = annotation_dims.fmt(value)
+
+            def commit(v, i=i):
+                new = dict(texts)
+                if not v or v == annotation_dims.MEASURE:
+                    new.pop(str(i), None)
+                else:
+                    new[str(i)] = v
+                edit(texts=new or None)
+
+            field = self._text(f"Trecho {i + 1} ({measure})",
+                               texts.get(str(i), annotation_dims.MEASURE), commit)
+            field.setToolTip(f"{annotation_dims.MEASURE} é trocado pela medida, que continua "
+                             "acompanhando o modelo; sem ele o texto fica fixo")
+        if texts:
+            self._buttons(("Voltar à medida", lambda: edit(texts=None)))
+        if state.get("text_moves"):  # textos arrastados pela alça (spec/ui 57 §4)
+            self._buttons(("Textos de volta ao lugar", lambda: edit(text_moves=None)))
+        self._section("Marcador")
+        self._combo("Marcador", [("Traço a 45°", "tick"), ("Seta cheia", "arrow"),
+                                 ("Seta aberta", "open_arrow"), ("Ponto", "dot"),
+                                 ("Nenhum", "none")], state.get("marker") or "tick",
+                    lambda v: edit(marker=None if v == "tick" else v))
+        self._number("Tamanho (mm)", state.get("marker_size") or annotation_dims.TICK,
+                     lambda v: edit(marker_size=None if abs(v - annotation_dims.TICK) < 1e-9
+                                    else v))
+
+    def _annotation_style(self, elements) -> None:
+        """Fonte, altura, cor e linha de uma ou várias anotações (spec/ui 55 §2.3)."""
+        doc = self.session.doc
+        elements = [e for e in elements if annotation_style.styled(e)]
+        if not elements:
+            return
+
+        def set_(**fields):
+            self._run(lambda: annotation_style.edit_style(doc, elements, **fields))
+
+        def common(field):
+            return annotation_style.common(elements, field)
+
+        has_text = any(annotation_base.build(doc, e).texts for e in elements)
+        if has_text:
+            self._section("Texto")
+            from brasbim.ui.selection_options import font_combo
+
+            self._add("Fonte", font_combo(common("font"), lambda v: set_(font=v)))
+            sizes = [("Do tipo", None)] + [(f"{fmt(v)} mm", v) for v in annotation_style.SIZES]
+            size = common("size")
+            if size is not None and size not in annotation_style.SIZES:
+                sizes.append((f"{fmt(size)} mm", size))
+            combo = self._combo("Altura", sizes, size, lambda v: set_(size=v))
+            combo.setEditable(True)
+            combo.lineEdit().editingFinished.connect(lambda: self._typed_size(combo, set_))
+            self._combo("Negrito", YES_NO, bool(common("bold")),
+                        lambda v: set_(bold=v or None))
+            self._combo("Itálico", YES_NO, bool(common("italic")),
+                        lambda v: set_(italic=v or None))
+            self._pen_field("Pena do texto", common("text_pen"), lambda v: set_(text_pen=v))
+        self._section("Linha")
+        self._pen_field("Pena da linha", common("pen"), lambda v: set_(pen=v))
+        if any((annotation_base.read_state(e).get("style") or {}) for e in elements):
+            self._buttons(("Seguir a pena (tirar o estilo)", lambda: set_(
+                **dict.fromkeys(annotation_style.FIELDS))))
+
+    def _pen_field(self, label: str, current, commit) -> None:
+        """Número da pena da tabela, com a amostra da cor (spec/ui 57)."""
+        from brasbim.ui.selection_options import pen_combo
+
+        table = self.pens_table() if self.pens_table is not None else None
+        if table is None:
+            from brasbim.core import pens
+
+            table = pens.resolve(self.session.doc)
+        self._add(label, pen_combo(table, current, commit, label))
+
+    pens_table = None  # tabela da janela (posta pela janela principal)
+
+    def _element_pens_field(self, elements) -> None:
+        """Penas próprias de paredes, pilares, vigas, lajes, coberturas, esquadrias e
+        objetos (spec/ui 57): Contorno, Hachura, Vista; vazio = a da tabela."""
+        from brasbim.core import element_pens
+
+        doc = self.session.doc
+        elements = [display_layers.owner(e) for e in elements]
+        fields = element_pens.fields_of(doc, elements[0]) if elements else ()
+        if not fields or any(element_pens.fields_of(doc, e) != fields for e in elements):
+            return
+        self._section("Penas")
+        chosen = [element_pens.read(e) for e in elements]
+        for key in fields:
+            values = {c.get(key) for c in chosen}
+            self._pen_field(element_pens.LABELS[key], values.pop() if len(values) == 1
+                            else None, lambda v, k=key: self._run(
+                                lambda: element_pens.set_pens(doc, elements, **{k: v})))
+
+    def _typed_size(self, combo, set_) -> None:
+        text = combo.currentText().replace("mm", "").strip()
+        try:
+            value = parse_number(text)
+        except ValueError:
+            return
+        if combo.currentData() != value:
+            set_(size=value)
 
     def _layer_field(self, selection) -> None:
         """Camada (spec/ui 18 §5) e situação (spec/ui 31 §2) de um ou vários elementos:
@@ -2078,6 +2209,63 @@ class PropertiesPanel(QScrollArea):
                     shown.setStyleSheet(f"color: {theme.INK_SOFT}")
                     shown.setToolTip(f"Calculado: = {p['formula']}")
                     self._add(ow.label(p), shown)
+
+    def _freeform(self, element) -> None:
+        """Forma livre (forma-livre.md §3 e §5): nome, categoria, lugar, medidas (esticam a
+        malha) e o material de cada parte."""
+        from brasbim.core import materials
+        from brasbim.core.freeform import commands as fc
+        from brasbim.core.freeform import mesh as fm
+        from brasbim.core.objects import definition as od
+
+        doc = self.session.doc
+        state = freeform.read_state(doc, element)
+
+        def edit(**changes):
+            self._run(lambda: fc.edit(doc, element, **changes))
+
+        self._title("Forma livre")
+        self._text("Nome", state["name"], lambda v: edit(name=v.strip() or state["name"]))
+        self._combo("Categoria", [(v[3], k) for k, v in od.CATEGORIES.items()],
+                    state["category"], lambda v: edit(category=v))
+        self._text("O que é", state["object_type"], lambda v: edit(object_type=v.strip()),
+                   "Poltrona, Escultura…")
+        self._section("Posição")
+        self._number("Rotação (°)", state["angle"], lambda v: edit(angle=v))
+        self._number("Elevação (m)", state["elevation"], lambda v: edit(elevation=v))
+        self._section("Medidas")
+        width, depth, height = fm.size(state["parts"])
+        keep = QCheckBox()
+        keep.setChecked(self.freeform_proportional)
+        keep.setToolTip("Ligado: mudar uma medida estica as outras na mesma proporção")
+        keep.toggled.connect(lambda v: setattr(self, "freeform_proportional", bool(v)))
+        self._add("Manter proporção", keep)
+
+        def resize(**measure):
+            self._run(lambda: fc.resize(doc, element, proportional=self.freeform_proportional,
+                                        **measure))
+
+        self._number("Largura (m)", width, lambda v: resize(width=v))
+        self._number("Profundidade (m)", depth, lambda v: resize(depth=v))
+        self._number("Altura (m)", height, lambda v: resize(height=v))
+        self._section("Partes")
+        names = sorted({*materials.LIBRARY, *(m.Name for m in doc.ifc.by_type("IfcMaterial")
+                                             if m.Name)})
+        for i, part in enumerate(state["parts"]):
+            self._combo(part["name"], [("(sem material)", None), *((n, n) for n in names)],
+                        part.get("material"),
+                        lambda v, i=i: self._run(
+                            lambda: fc.set_part_material(doc, element, i, v)))
+        self._section("Identificação")
+        self._read("Triângulos", str(fm.triangle_count(state["parts"])))
+        if state["source"]:
+            self._read("Origem", state["source"])
+        if state["description"]:
+            note = QLabel(state["description"])
+            note.setWordWrap(True)
+            note.setStyleSheet(f"color: {theme.INK_SOFT}")
+            self._add(note)
+        self._read("GlobalId", element.GlobalId)
 
     def _object(self, element) -> None:
         from brasbim.core.objects import commands as oc
