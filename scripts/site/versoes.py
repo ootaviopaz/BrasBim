@@ -335,7 +335,8 @@ def outputs(changelog: str, index_html: str, sitemap: str) -> tuple[str, str, st
 
 
 def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
+    # CRLF de um checkout no Windows (core.autocrlf) não conta como diferença
+    return path.read_text(encoding="utf-8").replace("\r\n", "\n")
 
 
 def main(argv: list[str]) -> int:
