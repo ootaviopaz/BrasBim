@@ -239,7 +239,7 @@ pensado para as normas e a prática brasileiras, incluindo o projeto legal para 
 
 ## 7. Maturidade (dizer com honestidade)
 
-- **Versão 0.0.1, em desenvolvimento ativo.** Ainda não há versão estável para download
+- **Versão 0.0.2, em desenvolvimento ativo.** Ainda não há versão estável para download
   público. Quem testa hoje usa uma pasta portátil (roda de um pendrive) ou instala a partir
   do código.
 - Desenvolvido e testado no **Windows**. A tecnologia (Python e Qt) é multiplataforma e o
@@ -313,7 +313,7 @@ energético ou luminotécnico (esses ficam com outros programas, via IFC).
   todos os programas BIM leem e exportam. Formatos fechados de outros programas, não.
 - *Abre DWG?* Importa DWG e DXF como referência e exporta DWG e DXF, por um conversor
   livre que vem junto.
-- *Já dá para usar num projeto real?* Está em desenvolvimento, versão 0.0.1. Já modela e
+- *Já dá para usar num projeto real?* Está em desenvolvimento, versão 0.0.2. Já modela e
   documenta uma casa (plantas, cortes, fachadas, tabelas, pranchas em PDF, quadro de
   áreas), mas ainda não tem versão estável. É uma boa hora para testar e dar retorno.
 - *Funciona no Mac e no Linux?* O objetivo é rodar nos três sistemas. Hoje é testado no
