@@ -11,6 +11,12 @@ Grupos: **Novo**, **Melhorias**, **Correções**, **Interno** (só para quem des
 Aberta em 2026‑11‑25, depois do lançamento da 0.0.2. Tudo o que for feito a partir desta
 data entra aqui.
 
+### Interno
+- **Notas de versão no site.** Página nova `brasbim.org/versoes/`, com as notas de cada
+  versão lançada, e seção "Novidades da versão" na página inicial, antes de Baixar.
+  As duas são geradas do `CHANGELOG.md` por `scripts/site/versoes.py` (rodar ao lançar;
+  o teste `tests/test_site_versoes.py` acusa quando o site fica desatualizado).
+
 ## [0.0.2] — 2026‑11‑25
 
 ### Novo

@@ -21,6 +21,12 @@ Regras do projeto: `CLAUDE.md` e `cleanroom/PROCESSO.md` (nunca acessar `_restri
 > **Ficaram para depois do lançamento** (eram pré‑requisitos e não foram feitos): o revisor
 > testar de novo o IFC grande (IFC2X3 em mm, ~1 milhão de entidades) e o 3D girando; itens
 > G4 e H3 do `docs/roteiro-teste-0.0.2.md`. Se aparecer problema, corrigir na 0.0.3.
+> **Notas de versão no site (mesmo dia, ramo `versao-0.0.3`):** `brasbim.org/versoes/` e
+> a seção "Novidades da versão" (`#versoes`) da página inicial saem do `CHANGELOG.md` por
+> `scripts/site/versoes.py` (só versões com data; grupo Interno fica de fora; bloco entre
+> `<!-- versoes:inicio/fim -->` no `index.html`; `<lastmod>` de `/versoes/` no sitemap).
+> **Ao lançar:** datar a seção, rodar `python scripts/site/versoes.py` e fazer commit;
+> `tests/test_site_versoes.py` falha enquanto o site não estiver em dia.
 > **0.0.3 aberta** no ramo `versao-0.0.3` (versão em `pyproject.toml`,
 > `brasbim/__init__.py`, `CLAUDE.md` e seção nova no topo do `CHANGELOG.md`); juntar ao
 > `main` por PR. Sem `gh` nesta máquina: PRs e lançamentos pelo navegador.

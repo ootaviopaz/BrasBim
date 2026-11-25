@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<!-- Gerado por scripts/site/versoes.py a partir do CHANGELOG.md: não editar à mão. -->
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Versões do BrasBim: notas de versão e novidades</title>
+  <meta name="description" content="Notas de versão do BrasBim, software BIM gratuito e de código aberto: o que mudou em cada versão. A mais recente é a 0.0.2, de 25 de novembro de 2026.">
+  <link rel="canonical" href="https://brasbim.org/versoes/">
+  <meta name="robots" content="index, follow">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:site_name" content="BrasBim">
+  <meta property="og:url" content="https://brasbim.org/versoes/">
+  <meta property="og:title" content="Versões do BrasBim">
+  <meta property="og:description" content="Notas de versão do BrasBim, software BIM gratuito e de código aberto: o que mudou em cada versão. A mais recente é a 0.0.2, de 25 de novembro de 2026.">
+  <meta property="og:image" content="https://brasbim.org/imagens/torre-abertura.jpg">
+  <link rel="icon" href="../imagens/simbolo-32.png">
+  <link rel="apple-touch-icon" href="../imagens/simbolo-128.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+  <link rel="stylesheet" href="../estilo.css">
+</head>
+<body>
+  <a class="pular" href="#conteudo">Pular para o conteúdo</a>
+
+  <header class="topo">
+    <div class="topo-dentro">
+      <a class="marca" href="../">
+        <img src="../imagens/simbolo-128.png" alt="" width="30" height="30">
+        <span>BrasBim</span>
+      </a>
+      <nav aria-label="Principal">
+        <a href="../#recursos">Recursos</a>
+        <a href="../#roteiro">Roteiro</a>
+        <a href="../#forum">Fórum</a>
+        <a href="./" aria-current="page">Versões</a>
+        <a href="https://github.com/ootaviopaz/BrasBim">Código</a>
+        <a class="botao" href="../#baixar">Baixar</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="conteudo" class="notas">
+    <div class="notas-dentro">
+      <aside class="notas-indice">
+        <h1>Versões</h1>
+        <p>O que mudou em cada versão do BrasBim, da mais nova para a mais antiga.</p>
+        <ol>
+          <li><a href="#v0.0.2">0.0.2</a> <span>25 de novembro de 2026</span></li>
+          <li><a href="#v0.0.1">0.0.1</a> <span>7 de novembro de 2026</span></li>
+        </ol>
+        <a class="botao" href="../#baixar">Baixar a 0.0.2</a>
+      </aside>
+      <div class="notas-lista">
+      <article class="nota" id="v0.0.2">
+        <header class="nota-cabeca">
+          <h2><a href="#v0.0.2">0.0.2</a></h2>
+          <p><time datetime="2026-11-25">25 de novembro de 2026</time> ·
+            <a href="https://github.com/ootaviopaz/BrasBim/releases/tag/v0.0.2">Baixar esta versão</a></p>
+        </header>
+        <h3>Novo</h3>
+        <ul>
+          <li id="v0.0.2-busca-no-navegador"><strong>Busca no Navegador.</strong> Um campo no alto do Navegador filtra a seção aberta pelo nome enquanto você digita, sem diferenciar maiúsculas nem acentos ("terreo" acha "Térreo"); com várias palavras, o item precisa ter todas. Nas árvores, o que casa aparece com o que está dentro, e os grupos com achados se abrem sozinhos (e voltam a fechar ao limpar). O título mostra quantos sobraram ("Pranchas (2 de 5)"). <strong>Ctrl+F</strong> leva ao campo, <strong>Enter</strong> abre o primeiro achado e <strong>Esc</strong> limpa. (spec/ui 53)</li>
+          <li id="v0.0.2-assistente-anexar-imagem"><strong>Assistente: anexar imagem.</strong> O painel do Assistente aceita até 4 imagens por pedido (PNG, JPEG ou WebP): pelo botão Anexar imagem, colando com Ctrl+V ou arrastando o arquivo. As miniaturas aparecem acima do pedido, cada uma com um × para tirar. A foto é reduzida antes de ir e é enviada à IA junto com o pedido; não é gravada no projeto. (spec/ui 54)</li>
+          <li id="v0.0.2-assistente-objeto-novo-a-partir-de-uma-foto"><strong>Assistente: objeto novo a partir de uma foto.</strong> Mande a foto de um móvel, aparelho ou louça com as medidas e peça o objeto: a IA procura na biblioteca e, se nada servir, cria um objeto paramétrico novo (largura, profundidade e altura como parâmetros), confere o resultado numa prévia em quatro vistas, corrige e insere no projeto. Ela diz quais medidas vieram de você e quais ela supôs. O objeto pode ser editado e salvo na biblioteca como qualquer outro. É um modelo simplificado, de caixas e cilindros, sem textura. (spec/ui 54)</li>
+          <li id="v0.0.2-forma-livre"><strong>Forma livre.</strong> Elemento novo para peças únicas de geometria qualquer (uma poltrona de desenho autoral, uma escultura, uma luminária orgânica), guardadas em malha, sem tipo nem parâmetros. O objeto paramétrico continua sendo para o que se repete e muda de medida. Aparece na planta pela silhueta, no corte, na fachada, no 3D e nas tabelas de objetos; move, gira, espelha, copia e estica pelas medidas (painel Propriedades), com material por parte. No IFC sai como malha (<code>Tessellation</code>) na classe da categoria escolhida. (spec/elementos/forma-livre)</li>
+          <li id="v0.0.2-assistente-forma-livre-a-partir-de-uma-descricao-ou-foto"><strong>Assistente: forma livre a partir de uma descrição ou foto.</strong> Para peças curvas, inclinadas ou esculpidas, a IA monta a peça com formas mais ricas que as do objeto (caixa de cantos arredondados, elipsoide, cone, tubo por caminho, seções ligadas, revolução e extrusão, giradas nos três eixos), confere na prévia e corrige. Ela diz se escolheu objeto ou forma livre, e por quê.</li>
+          <li id="v0.0.2-importar-forma-livre-de-arquivo"><strong>Importar forma livre de arquivo.</strong> Arquivo &gt; Importar forma livre lê OBJ, STL e GLB, com a unidade e o eixo para cima do arquivo. Malhas com mais de 20 000 triângulos são simplificadas ao entrar, com aviso.</li>
+          <li id="v0.0.2-converter-em-forma-livre"><strong>Converter em forma livre.</strong> Editar &gt; Converter em forma livre junta os objetos e formas livres selecionados numa peça só.</li>
+          <li id="v0.0.2-estilo-de-cotas-e-textos"><strong>Estilo de cotas e textos.</strong> Toda cota, texto, rótulo, linha e símbolo pode ter fonte própria (qualquer fonte instalada), altura, negrito, itálico, <strong>pena da linha</strong> e <strong>pena do texto</strong>, na barra Opções e na ficha Propriedades; com várias anotações selecionadas, a escolha vale para todas. (spec/ui 55, spec/ui 57)</li>
+          <li id="v0.0.2-penas-em-cada-elemento"><strong>Penas em cada elemento.</strong> Paredes, pilares, vigas, lajes e coberturas escolhem a pena do <strong>contorno</strong> do corte, da <strong>hachura</strong> do corte e das linhas em <strong>vista</strong>; portas, janelas e objetos, a do contorno. A lista mostra o número, a cor e a espessura de cada pena da tabela; "Da tabela" volta ao padrão. Na barra Opções (também para os próximos elementos da ferramenta) e no painel Propriedades; copiar e o conta‑gotas levam as penas. (spec/ui 57)</li>
+          <li id="v0.0.2-mover-so-o-texto-da-cota"><strong>Mover só o texto da cota.</strong> Cada número da cota tem uma alça: arrastar leva só o texto, sem mexer na linha de cota; longe da linha, ganha uma linha de chamada. Enquanto arrasta, um fantasma mostra onde o texto (e a linha de chamada) vai ficar ao soltar. "Textos de volta ao lugar" no painel. (spec/ui 57)</li>
+          <li id="v0.0.2-texto-e-marcador-da-cota"><strong>Texto e marcador da cota.</strong> Cada trecho da cota pode ter o texto trocado (na ficha ou com clique duplo no número): <code>&lt;medida&gt;</code> continua acompanhando o modelo ("≈ &lt;medida&gt; (var.)"); sem ele o texto fica fixo e aparece sublinhado na tela, para não esquecer. Prefixo, sufixo, casas decimais da cota e o marcador: traço a 45°, seta cheia, seta aberta, ponto ou nenhum. (spec/ui 55)</li>
+          <li id="v0.0.2-localizar-e-substituir"><strong>Localizar e substituir.</strong> Editar &gt; Localizar e substituir (<strong>Ctrl+Shift+F</strong>): acha elementos por classe e por critérios (tipo, nome, código, camada, situação, material, pavimento, texto, qualquer propriedade ou quantidade, com "é", "contém", "&lt;", "entre"…) no pavimento ou em todos; seleciona, soma ou tira da seleção; critérios salvos com nome no projeto. A aba Substituir troca texto das anotações, nome, código, propriedade, tipo, camada, situação ou estilo nos achados ou na seleção, de uma vez (um Desfazer). (spec/ui 55)</li>
+          <li id="v0.0.2-conta-gotas-pegar-e-aplicar-ajustes"><strong>Conta‑gotas: pegar e aplicar ajustes.</strong> <strong>Alt+clique</strong> num elemento pega os ajustes dele (tipo, alturas, linha de referência, estilo, camada, situação; nunca a posição) e <strong>Ctrl+Alt+clique</strong> aplica em outro; também pelos botões Pegar/Aplicar ajustes da mini‑barra e do menu Editar, para vários selecionados de uma vez. Com uma ferramenta de criação ativa (Parede, Laje…), o Alt+clique leva os ajustes para ela. (spec/ui 55)</li>
+          <li id="v0.0.2-barra-opcoes-com-a-selecao"><strong>Barra Opções com a seleção.</strong> Ao selecionar um elemento já criado, a barra Opções mostra as características dele (tipo, espessura, alturas, linha de referência, seção, medidas do vão, estilo…), para mudar a qualquer momento, como na criação. Com vários selecionados, os valores que diferem aparecem como "vários" e a mudança vale para todos. (spec/ui 56)</li>
+          <li id="v0.0.2-estilo-nas-ferramentas-de-anotacao"><strong>Estilo nas ferramentas de anotação.</strong> Cota, Texto, Rótulo, Linha, Curva, Círculo, Arco, Nível, Norte e Marcador de alteração têm na barra Opções a fonte, a altura, negrito, itálico e as penas das próximas anotações; a Cota também o marcador. (spec/ui 55)</li>
+          <li id="v0.0.2-copia-ao-arrastar"><strong>Cópia ao arrastar.</strong> Ao arrastar a seleção, apertar <strong>Ctrl</strong> mostra um + no cursor: soltar deixa a cópia e cada clique seguinte faz mais uma, em qualquer direção, até Esc (Tab digita distância e ângulo; Cópias faz a série). <strong>Ctrl+D</strong> abre o Copiar sem arrastar. (spec/ui 55)</li>
+          <li id="v0.0.2-assistente-cotas"><strong>Assistente: cotas.</strong> Peça "cote as paredes" e o Assistente faz a cota automática de cada parede reta do pavimento (ou só das que você indicar): pontas e bordas das portas e janelas, na face externa, acompanhando quando a parede muda. Pula as curvas e as que já têm cota; tudo num Desfazer. (spec/ui 16 §4.4)</li>
+          <li id="v0.0.2-cotas-em-niveis"><strong>Cotas em níveis.</strong> Projeto &gt; <strong>Cotar pavimento</strong> (ou peça ao Assistente "cote a planta em 3 níveis") cota cada lado da planta em linhas paralelas, como num projeto: <strong>aberturas</strong> perto do desenho (cantos e vãos de portas e janelas), <strong>estrutura</strong> no meio (faces dos pilares e das paredes que chegam à fachada) e <strong>total</strong> por fora; também a largura e a profundidade de cada <strong>cômodo</strong>, face a face. Escolha os níveis e os lados; a linha que repetiria outra não sai. As cotas acompanham o modelo e refazer substitui as automáticas (as que você mexeu ficam). Um Desfazer volta tudo. (spec/ui 59)</li>
+          <li id="v0.0.2-atalhos-de-teclado-configuraveis"><strong>Atalhos de teclado configuráveis.</strong> Menu novo <strong>Preferências &gt; Atalhos de teclado</strong>: qualquer item dos menus e qualquer ferramenta pode ter o atalho que você quiser. Busca por nome ou pelo atalho, aviso quando o atalho já era de outro comando (ele passa para o novo), Voltar ao padrão e Restaurar todos. Os atalhos ficam nas suas preferências, não no projeto. (spec/ui 58)</li>
+        </ul>
+        <h3>Melhorias</h3>
+        <ul>
+          <li id="v0.0.2-conta-gotas-mais-parecido-com-o-uso-comum-em-bim"><strong>Conta‑gotas mais parecido com o uso comum em BIM.</strong> Os ajustes pegos com Alt+clique passam a valer para a ferramenta daquele elemento mesmo com Selecionar ativa (os próximos saem iguais), inclusive Porta, Janela, Pilar e Viga (com a seção) e o estilo das anotações. Cada classe guarda os últimos ajustes pegos: Ctrl+Alt+clique numa parede aplica os da parede, mesmo que depois você tenha pegado de uma cota. Com Alt ou Ctrl+Alt apertado, o elemento sob o cursor fica realçado; Ctrl+Alt+clique num elemento selecionado aplica em toda a seleção; e o conta‑gotas funciona também no 3D. (spec/ui 55)</li>
+          <li id="v0.0.2-ao-fim-de-um-pedido-ao-assistente-os-objetos-mobiliario-louc">Ao fim de um pedido ao Assistente, os objetos (mobiliário, louças, eletrodomésticos) que ele criou ou mudou também ficam selecionados, como já acontecia com paredes e esquadrias.</li>
+          <li id="v0.0.2-a-previa-que-o-assistente-usa-para-conferir-um-objeto-passou">A prévia que o Assistente usa para conferir um objeto passou a respeitar a profundidade: peças de trás não aparecem mais por cima das da frente.</li>
+          <li id="v0.0.2-material-couro-na-biblioteca-de-cores">Material <strong>Couro</strong> na biblioteca de cores.</li>
+        </ul>
+        <h3>Correções</h3>
+        <ul>
+          <li id="v0.0.2-3d-de-projeto-grande-mais-leve"><strong>3D de projeto grande mais leve.</strong> Com milhares de peças (um IFC de outro programa inteiro), girar e aproximar o 3D travava: cada quadro mandava todas as malhas de novo para a placa de vídeo. Agora a cena fica guardada na placa e é desenhada de uma vez; no projeto de teste (3.786 peças), cada quadro caiu de 260 ms para 33 ms. Durante o giro, as silhuetas das superfícies curvas ficam como no último quadro parado.</li>
+          <li id="v0.0.2-selecionar-uma-parede-de-outro-programa-dava-erro-na-mini-ba">Selecionar uma <strong>parede de outro programa</strong> dava erro na mini‑barra da seleção e podia dar no painel Propriedades. A parede com camadas só nela (e não no tipo) agora é lida pelas camadas dela; a que é só malha fica sem as ações de parede.</li>
+          <li id="v0.0.2-ifc-de-outro-programa-tudo-aparece-na-planta-e-no-3d"><strong>IFC de outro programa: tudo aparece na planta e no 3D.</strong> Paredes, escadas, rampas, móveis, louças, fachadas‑cortina, montantes, painéis e peças genéricas que vêm de outro programa (sem os dados do BrasBim) ficavam de fora. Agora aparecem pela geometria: na planta, o que o plano de corte atravessa sai cortado (fundo e contorno grosso) e o que está abaixo dele sai em vista, em linha fina; no 3D, todas as peças. A geometria é preparada logo ao abrir, com uma janela de andamento, e a planta e o 3D usam a mesma. Arquivos em milímetros, centímetros ou pés passam a ter as medidas convertidas para metros ao abrir (antes, as alturas e o plano de corte não batiam). (spec/ui 60 §3)</li>
+          <li id="v0.0.2-abrir-ifc-2x3-ou-ifc-4"><strong>Abrir IFC 2x3 ou IFC 4</strong> dava erro na planta (e o erro se repetia sem parar). Agora o arquivo é convertido para o IFC 4.3 ao abrir, com uma janela de andamento nos arquivos grandes; um aviso diz de que esquema veio, e Salvar pede um nome novo para não gravar por cima do original (para entregar em 2x3 ou 4, use Exportar IFC). As etiquetas de vigas de outros programas, com contorno que não é um retângulo, e a seleção de uma parede de outro programa (barra Opções) também davam erro. (spec/ui 60)</li>
+          <li id="v0.0.2-no-windows-apertar-e-soltar-o-alt-sobre-a-planta-ou-o-3d-par">No Windows, apertar e soltar o <strong>Alt</strong> sobre a planta ou o 3D (para o conta‑gotas) levava o foco ao menu Arquivo, e a vista parava de receber as teclas até um novo Alt.</li>
+          <li id="v0.0.2-no-3d-as-paredes-com-camadas-mostravam-linhas-falsas-dos-can">No 3D, as paredes com camadas mostravam linhas falsas, dos cantos das portas e janelas até os cantos da parede (emendas internas da divisão por material). Agora só aparecem as quinas de verdade, também com a caixa de corte.</li>
+        </ul>
+      </article>
+      <article class="nota" id="v0.0.1">
+        <header class="nota-cabeca">
+          <h2><a href="#v0.0.1">0.0.1</a></h2>
+          <p><time datetime="2026-11-07">7 de novembro de 2026</time> ·
+            <a href="https://github.com/ootaviopaz/BrasBim/releases/tag/v0.0.1">Baixar esta versão</a></p>
+        </header>
+        <p class="nota-intro">Primeira versão publicada ("versão de teste"), com instalador para Windows e macOS.</p>
+      </article>
+        <p class="notas-rodape">A lista completa, com as mudanças internas, está no
+          <a href="https://github.com/ootaviopaz/BrasBim/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
+      </div>
+    </div>
+  </main>
+
+  <footer class="rodape">
+    <div class="rodape-fim">
+      <a class="marca" href="../"><img src="../imagens/simbolo-128.png" alt="" width="26" height="26"><span>BrasBim</span></a>
+      <p>Criado e mantido por Otávio Paz e pelos contribuidores do projeto.</p>
+    </div>
+  </footer>
+</body>
+</html>

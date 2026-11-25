@@ -370,3 +370,57 @@ a.sistema:hover em { background: var(--jabuticaba-2); }
 .lista-perguntas details { background: var(--branco); border-radius: var(--raio-painel); box-shadow: var(--sombra); padding: 1.1rem 1.4rem; }
 .lista-perguntas summary { cursor: pointer; font-weight: 700; font-size: 1.1rem; }
 .lista-perguntas p { margin-top: .7rem; color: var(--texto-2); }
+
+/* Versões (gerado por scripts/site/versoes.py) */
+.versoes-data { color: var(--texto-2); margin-top: -.6rem; }
+.versoes-data a { color: var(--jabuticaba); font-weight: 600; }
+.versoes-grupos { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 1.2rem; margin-top: 1.8rem; }
+.versoes-grupo { padding: 1.4rem 1.5rem; border-radius: var(--raio-painel); background: var(--branco); box-shadow: var(--sombra); }
+.versoes-grupo h3 { display: flex; align-items: center; gap: .5rem; font-size: 1.15rem; font-weight: 700; }
+.versoes-grupo h3 span { padding: .05rem .55rem; border-radius: 999px; background: var(--lilas); color: var(--jabuticaba); font-size: .85rem; font-weight: 700; }
+.versoes-grupo ul { margin: .9rem 0 0; padding-left: 1.1rem; display: grid; gap: .4rem; font-size: .98rem; }
+.versoes-grupo-largo ul { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 1.6rem; }
+.versoes-grupo li::marker { color: var(--pitanga); }
+.versoes-grupo li a { color: var(--grafite); text-decoration: none; }
+.versoes-grupo li a:hover { color: var(--jabuticaba); text-decoration: underline; }
+.versoes-mais { display: inline-block; margin-top: .9rem; color: var(--jabuticaba); font-weight: 600; font-size: .95rem; }
+
+/* Página de versões */
+.notas-dentro {
+  max-width: var(--largura); margin: 0 auto; padding: clamp(2.5rem, 6vw, 4rem) var(--margem) clamp(3rem, 7vw, 5rem);
+  display: grid; grid-template-columns: minmax(0, 16rem) minmax(0, 1fr); gap: clamp(2rem, 5vw, 4rem); align-items: start;
+}
+.notas-indice { position: sticky; top: 5rem; }
+.notas-indice h1 { font-size: clamp(2.4rem, 5vw, 3.4rem); font-weight: 800; letter-spacing: -.04em; color: var(--jabuticaba); }
+.notas-indice > p { margin-top: .8rem; color: var(--texto-2); }
+.notas-indice ol { list-style: none; margin: 1.4rem 0; padding: 0; display: grid; gap: .3rem; }
+.notas-indice li { display: flex; justify-content: space-between; gap: 1rem; padding: .4rem 0; border-bottom: 1px solid var(--nevoa); }
+.notas-indice li a { font-weight: 700; text-decoration: none; }
+.notas-indice li a:hover { color: var(--jabuticaba); }
+.notas-indice li span { color: var(--texto-2); font-size: .92rem; }
+.notas-lista { display: grid; gap: 1.6rem; }
+.nota { padding: clamp(1.4rem, 3vw, 2.2rem); border-radius: var(--raio-painel); background: var(--branco); box-shadow: var(--sombra); scroll-margin-top: 5rem; }
+.nota-cabeca { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem 1.5rem; flex-wrap: wrap; padding-bottom: 1rem; border-bottom: 1px solid var(--nevoa); }
+.nota-cabeca h2 { font-size: 2.4rem; font-weight: 800; letter-spacing: -.04em; }
+.nota-cabeca h2 a { text-decoration: none; }
+.nota-cabeca p { color: var(--texto-2); }
+.nota-cabeca p a { color: var(--jabuticaba); font-weight: 600; }
+.nota-intro { margin-top: 1rem; }
+.nota h3 { margin-top: 1.6rem; font-size: 1.15rem; font-weight: 700; color: var(--jabuticaba); }
+.nota ul { margin: .7rem 0 0; padding-left: 1.2rem; display: grid; gap: .7rem; }
+.nota li { color: #3d3842; scroll-margin-top: 5rem; }
+.nota li::marker { color: var(--pitanga); }
+.nota li strong { color: var(--grafite); }
+.nota li:target { background: var(--lilas); border-radius: 6px; box-shadow: 0 0 0 .4rem var(--lilas); }
+.nota code { font: .9em ui-monospace, "Cascadia Mono", Consolas, monospace; background: var(--fundo); padding: .05rem .3rem; border-radius: 4px; }
+.notas-rodape { color: var(--texto-2); font-size: .95rem; }
+.notas-rodape a { color: var(--jabuticaba); }
+
+@media (max-width: 900px) {
+  .versoes-grupos, .notas-dentro { grid-template-columns: minmax(0, 1fr); }
+  .notas-indice { position: static; }
+}
+@media (max-width: 640px) {
+  .versoes-grupo-largo ul { grid-template-columns: minmax(0, 1fr); }
+  .nota-cabeca h2 { font-size: 2rem; }
+}
