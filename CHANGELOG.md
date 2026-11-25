@@ -152,6 +152,10 @@ Aberta em 2026‑11‑12. Tudo o que for feito a partir desta data entra aqui.
   até os cantos da parede (emendas internas da divisão por material). Agora só aparecem
   as quinas de verdade, também com a caixa de corte.
 
+### Interno
+- O script do fórum do site (`scripts/site/forum_top.py`) passa no `ruff` de novo
+  (`datetime.UTC`), para o CI não falhar.
+
 ## [0.0.1] — 2026‑11‑07
 
 Primeira versão publicada ("versão de teste"), com instalador para Windows e macOS.

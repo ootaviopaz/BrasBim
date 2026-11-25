@@ -25,7 +25,7 @@ import json
 import os
 import sys
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 # No Actions vem de GITHUB_REPOSITORY, que acompanha uma troca de nome da conta.
 DONO, REPO = os.environ.get("GITHUB_REPOSITORY", "ootaviopaz/BrasBim").split("/", 1)
@@ -121,7 +121,7 @@ def main() -> int:
         top = []
 
     if destino:
-        saida = {"atualizado": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        saida = {"atualizado": datetime.now(UTC).isoformat(timespec="seconds"),
                  "postagens": top}
         with open(destino, "w", encoding="utf-8") as arquivo:
             json.dump(saida, arquivo, ensure_ascii=False, indent=1)
